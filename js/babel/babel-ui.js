@@ -29,32 +29,39 @@
 import { App, MachineCategories, getMachineConfig } from '../core/state.js';
 import { showStatus } from '../core/utils.js';
 import { applyDocument } from '../io/persistence.js';
-import { exportCopyText } from '../io/export-core.js';
+import { exportCopyText, exportDownload } from '../io/export-core.js';
 import { setView } from '../ui/view.js';
 import { writeStandardTM, bbchallengeUrl } from '../interop/standard-tm.js';
-import { h, button, svgFigure } from '../library/dom.js';
+import { h, backButton, brandLockup, button, svgFigure } from '../library/dom.js';
 import { drawSketch, sketchFromTarget, drawLanguage, languageRows } from '../library/sketch.js';
 import { decideRaw, liveDiagram, targetFromDoc, traceWord } from '../library/analyze.js';
-import { machineIdOf } from '../library/hash.js';
+import { canonicalCodeOf, machineIdOf } from '../library/hash.js';
+import { withMachine } from '../exercise/grade.js';
+import { buildFormalDefLatex } from '../canvas/render.js';
+import { triggerMath } from '../reference/reference.js';
 import { cachedLibrary } from '../library/client.js';
 import { webAppLink } from '../library/config.js';
-import { go, isInMyLibraryNow, libraryBack, libraryCanGoBack, libraryRoute, playRun, toggleSavedVolume, verdictChip } from '../library/library-ui.js';
+import {
+  behaviourSection, canInsertAsBlock, go, insertDocAsBlock, isInMyLibraryNow, libraryBack, libraryCanGoBack, libraryRoute,
+  moreMenu, playRun, savedVolumes, toggleSavedVolume, verdictChip
+} from '../library/library-ui.js';
 import { formatAddress, groupDigits, numberText, parseAddress, sayCount, showNumber } from './address.js';
 import { canonicalOf } from './canon.js';
 import { cellClassesOf, classifyBody, decideText, withVolumeLoaded } from './census.js';
 import { asSketchDfa, dfaOf, firstWords, languageClass, minimiseDfa, weakViolation } from './facts.js';
 import { endlessSpelling, finiteTiles, neighbours, nudge, conventionsOf } from './spell.js';
 import { askBabel } from './babel-client.js';
-import { findVolume } from './find.js';
+import { findVolume, volumeNamedBy } from './find.js';
 import { openVolume, randomVolume, roomId, roomShape, roomTotal, roomsOfWeight, seededBelow, wingCountUpTo, wingNumberOf } from './volumes.js';
-import { WINGS, letterName, roomProblem, wingByKey, wingIsFinite, wingOf } from './wings.js';
+import { WINGS, letterName, roomProblem, wingByKey, wingIsFinite, wingOf, withReaderNames } from './wings.js';
 
 // ── State ─────────────────────────────────────────────────────────
 
 const B = {
   wing: 'dfa',            // the wing a bare number on the Entrance counts in
   typed: '',              // what the Entrance's field holds
-  names: new Map(),       // address → the reader's own letter names, from the Finder
+  names: new Map(),       // room id → the reader's own letter names, from the Finder
+  ownLetters: true,       // draw a room the reader brought letters to in those letters
   notes: new Map(),       // address → how the Finder read the machine
   view: 'map',            // a room: 'map' or 'plates'
   from: new Map(),        // room id → the first volume on the plates page
@@ -69,7 +76,7 @@ const B = {
 };
 
 export function resetBabelUiForTests() {
-  B.wing = 'dfa'; B.typed = ''; B.names.clear(); B.notes.clear(); B.view = 'map';
+  B.wing = 'dfa'; B.typed = ''; B.names.clear(); B.ownLetters = true; B.notes.clear(); B.view = 'map';
   B.from.clear(); B.zoom.clear(); B.lit.clear(); B.canonicalOnly = false; B.wingRoom.clear(); B.verdicts.clear();
   B.census.clear(); B.active = null; B.current = null;
 }
@@ -101,8 +108,6 @@ function familyOf(wing) {
 }
 
 const ICONS = {
-  link: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5l3-3M5 7.5 3.6 8.9a2.5 2.5 0 0 0 3.5 3.5L8.5 11M11 8.5l1.4-1.4a2.5 2.5 0 0 0-3.5-3.5L7.5 5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
-  back: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   hex: '<svg viewBox="0 0 72 82" aria-hidden="true"><polygon points="36,1.5 70.5,21.25 70.5,60.75 36,80.5 1.5,60.75 1.5,21.25"/></svg>'
 };
 
@@ -120,9 +125,9 @@ function magnitude(n) {
   return `10${String(d).split('').map(c => SUP[Number(c)]).join('')}`;
 }
 
-/** A count short enough for a small label: in full up to nine digits, else 1.2 × 10^12. */
+/** A count short enough for a small label: in full up to nine digits, else 1.2 × 10¹². */
 function shortCount(n) {
-  return sayCount(n);
+  return pretty(sayCount(n));
 }
 
 function volumeAddress(wing, params, volume) {
@@ -166,25 +171,54 @@ function reveal(nodes) {
  * the shelf.
  */
 function locationBar({ wing = null, params = null, volume = null, tail = null } = {}) {
-  const bar = h('nav', { class: 'bab-loc', 'aria-label': 'Where you are in the Library of Babel', data: wing ? { family: familyOf(wing) } : {} });
-  if (libraryCanGoBack()) bar.append(h('button', { type: 'button', class: 'bab-loc-back', title: 'Back', 'aria-label': 'Back', on: { click: () => libraryBack() } }, icon('back')));
+  const bar = h('nav', { class: 'bab-loc', 'aria-label': 'Where you are in AutomataStudio Babel', data: wing ? { family: familyOf(wing) } : {} });
+  if (libraryCanGoBack()) bar.append(backButton(() => libraryBack()));
   const crumb = h('div', { class: 'bab-crumb' });
-  const parts = [{ word: 'Babel', cap: null, title: 'The Entrance', root: true, go: () => go('babel') }];
+  // The place, named as the catalogue's header names its own: the app's logo
+  // and wordmark, then "Babel" (brandLockup in dom.js).
+  const parts = [{ word: brandLockup('Babel'), cap: null, title: 'AutomataStudio Babel — the Entrance', root: true, go: () => go('babel') }];
   if (wing) parts.push({ word: wing.key, cap: 'wing', title: fullName(wing), wing: true, go: () => go('babel-wings', wing.key) });
-  if (wing && params) parts.push({ sep: '-' }, { word: params.join('-'), cap: 'room', title: paramWords(wing, params), go: () => go('babel-room', roomId(wing, params)) });
-  if (wing && params && volume !== null) parts.push({ sep: '/' }, { word: numberText(volume), cap: 'volume', title: `Volume ${groupDigits(volume)}` });
+  if (wing && params) {
+    const room = params.join('-');
+    parts.push({ sep: '-' }, { word: clip(room, 6, 4), cap: 'room', title: `${room} — ${paramWords(wing, params)}`, go: () => go('babel-room', roomId(wing, params)) });
+  }
+  if (wing && params && volume !== null) {
+    // A volume's number can run to thousands of characters: the bar shows its
+    // ends, the tooltip all of it, and a press copies the whole address.
+    const word = numberText(volume);
+    const address = volumeAddress(wing, params, volume);
+    const clipped = clip(word, 8, 6);
+    parts.push({ sep: '/' }, {
+      word: clipped, cap: clipped === word ? 'volume' : `volume · ${groupDigits(word.length)} characters`,
+      title: clipped === word ? `Volume ${groupDigits(volume)} — press to copy its address` : `${address}\nPress to copy the whole address`,
+      go: () => exportCopyText(address, 'Address copied — paste it into the Entrance to come back')
+    });
+  }
   const last = parts.length - 1;
   parts.forEach((p, i) => {
     if (p.sep) { crumb.append(h('span', { class: 'bab-crumb-sep', 'aria-hidden': 'true', text: p.sep })); return; }
     const cls = `bab-crumb-seg${p.root ? ' is-root' : ''}${p.wing ? ' is-wing' : ''}${i === last ? ' is-here' : ''}`;
-    const inner = [h('span', { class: 'bab-crumb-word' }, p.wing ? h('i', { class: 'lib-dot bab-crumb-dot', 'aria-hidden': 'true' }) : null, p.word), p.cap ? h('span', { class: 'bab-crumb-cap', text: p.cap }) : null];
-    crumb.append(i === last
+    const mark = p.wing ? h('i', { class: 'lib-dot bab-crumb-dot', 'aria-hidden': 'true' }) : null;
+    const inner = [h('span', { class: 'bab-crumb-word' }, mark, p.word), p.cap ? h('span', { class: 'bab-crumb-cap', text: p.cap }) : null];
+    // The page you are on is not a step back up; a volume's is a copy of its address.
+    crumb.append(i === last && !(p.go && volume !== null)
       ? h('span', { class: cls, title: p.title, 'aria-current': 'page' }, inner)
-      : h('button', { type: 'button', class: cls, title: p.title, on: { click: p.go } }, inner));
+      : h('button', { type: 'button', class: cls, title: p.title, 'aria-current': i === last ? 'page' : null, on: { click: p.go } }, inner));
   });
   bar.append(crumb);
   if (tail) bar.append(h('div', { class: 'bab-loc-tail' }, tail));
   return bar;
+}
+
+/** A long word's two ends, for a label: "BfbBatuO…UN3WAAA". The whole is for its tooltip. */
+function clip(word, head, tail) {
+  const s = String(word);
+  return [...s].length > head + tail + 3 ? `${[...s].slice(0, head).join('')}…${[...s].slice(-tail).join('')}` : s;
+}
+
+/** "1.7 × 10^292" → "1.7 × 10²⁹²": a count read as a power of ten. */
+function pretty(text) {
+  return String(text).replace(/10\^(\d+)/g, (_, d) => `10${d.split('').map(c => SUP[Number(c)]).join('')}`);
 }
 
 /**
@@ -257,19 +291,58 @@ function plateFigure(doc, { w = 200, h: ht = 120 } = {}) {
 }
 
 /** What a volume says, in a few words, for a plate or a readout. */
-function sayVolume(wing, params, body) {
+function sayVolume(wing, params, body, letters = null) {
   if (wing.kind === 'fa') {
     const t = dfaOf(wing.type, params, body);
     if (!t) return { cls: 'x', text: 'too large to determinise here' };
     const c = languageClass(t);
     if (c === 'e') return { cls: 'e', text: '∅' };
     if (c === 'u') return { cls: 'u', text: 'Σ*' };
-    const words = firstWords(t, { count: 3 }).map(w => (w.length ? w.map(letterName).join('') : 'ε'));
+    const words = firstWords(t, { count: 3, maxLen: SHORT_WORD }).map(w => spellWord(w, letters));
+    if (!words.length) return { cls: c === 'c' ? 'f' : c, text: `nothing under ${SHORT_WORD + 1} letters` };
     return { cls: c === 'c' ? 'f' : c, text: words.join(', ') + (c === 'f' && words.length < 3 ? '' : ', …') };
   }
   const cls = classifyBody(wing, params, body);
   const lab = cellClassesOf(wing).find(c => c.key === cls);
   return { cls, text: lab?.label || '' };
+}
+
+/** How long a word "Accepts …" looks for: firstWords is exact to this length. */
+const SHORT_WORD = 10;
+
+/** A word of letter indices, in the reader's letters when given (spaced if any is longer than one character). */
+function spellWord(w, letters) {
+  if (!w.length) return 'ε';
+  const name = i => letters?.[i] ?? letterName(i);
+  return w.map(name).join(letters?.some(s => [...String(s)].length > 1) ? ' ' : '');
+}
+
+/**
+ * The reader's own letters for a room, when they brought some and have not
+ * asked for the canonical ones. The number spells a, b, …; the reader who
+ * looked up a machine over {x, y, z} reads it over {x, y, z}.
+ */
+function lettersFor(wing, params) {
+  if (!B.ownLetters) return null;
+  return B.names.get(roomId(wing, params)) || null;
+}
+
+/** A volume's document as the page draws it: in the reader's letters for this room, if any. */
+function readerDoc(wing, params, doc) {
+  const names = lettersFor(wing, params);
+  return names ? withReaderNames(doc, names) : doc;
+}
+
+/** A found volume's document in the letters it was found in (the Finder's preview, the catalogue's offer). */
+function foundDoc(v, found) {
+  return B.ownLetters && found?.names ? withReaderNames(v.doc, found.names) : v.doc;
+}
+
+/** Remember the letters a found machine was written in, for its room. */
+function keepNames(found) {
+  if (found?.kind !== 'volume' || !found.names) return;
+  const wing = wingByKey(found.key);
+  if (wing) B.names.set(roomId(wing, found.params), found.names);
 }
 
 // ── The Entrance ──────────────────────────────────────────────────
@@ -283,7 +356,8 @@ const EXAMPLES = [
 
 function pageEntrance() {
   const page = h('div', { class: 'lib-page bab-page bab-entrance' });
-  page.append(locationBar());
+  page.append(locationBar({ tail: h('span', { class: 'bab-loc-note', title: 'Every machine of every type the app knows, numbered — nothing stored, every page computed' },
+    `${WINGS.length} wings · every machine, numbered · works offline`) }));
 
   // The title page: the statement, one field, and the volume it names.
   const select = h('select', { class: 'bab-wing-select', 'aria-label': 'The wing a number counts in' });
@@ -311,9 +385,8 @@ function pageEntrance() {
     h('div', { class: 'bab-field' },
       h('div', { class: 'bab-field-line' }, input, button('Open', open, 'lib-textbtn bab-field-open', { title: 'Open (Enter)' })),
       h('div', { class: 'bab-field-under' },
-        h('span', { text: 'a number, an address, a regular expression or a machine code' }),
-        h('span', { class: 'bab-wing-pick', title: 'A bare number counts in this wing' }, 'numbers count in ', select),
-        button('a random volume ↻', () => takeRandom(), 'lib-textbtn bab-random', { title: 'A random volume of the wing numbers count in' }))),
+        h('span', { text: 'a number, an address, a regular expression, a machine code or “canvas”' }),
+        h('span', { class: 'bab-wing-pick', title: 'A bare number counts in this wing' }, 'numbers count in ', select))),
     preview));
   update();
 
@@ -321,11 +394,16 @@ function pageEntrance() {
   const plates = EXAMPLES.map(ex => examplePlate(ex)).filter(Boolean);
   plates.push(h('button', { type: 'button', class: 'bab-example is-random', title: 'A random volume of the wing numbers count in', on: { click: () => takeRandom() } },
     h('div', { class: 'lib-fig bab-example-fig' }, h('span', { class: 'bab-random-glyph', text: '↻' })),
-    h('span', { class: 'bab-example-cap' }, h('span', { class: 'bab-example-k', text: 'random' }), h('span', { class: 'bab-example-say', text: 'any volume' }))));
+    h('span', { class: 'bab-example-cap' }, h('span', { class: 'bab-example-say', text: 'any volume' }), h('span', { class: 'bab-example-k', text: 'random' }))));
   page.append(h('section', { class: 'bab-examples', 'aria-label': 'Examples' },
     h('span', { class: 'bab-kicker', text: 'Or open one of these' }),
     h('div', { class: 'bab-example-row' }, plates)));
   reveal(plates);
+
+  const how = howSection();
+  if (how) page.append(how);
+  const mine = yoursSection();
+  if (mine) page.append(mine);
 
   // The galleries: a row of hexagons per family, a hexagon per wing.
   const groups = wingGroups();
@@ -350,7 +428,68 @@ function examplePlate(ex) {
   const label = ex.label || ex.text;
   return h('button', { type: 'button', class: 'bab-example', data: { family: familyOf(v.wing) }, title: `${ex.text} — ${v.wing.type} ${v.address}`, on: { click: () => followFound(found) } },
     plateFigure(v.doc, { w: 220, h: 120 }),
-    h('span', { class: 'bab-example-cap' }, h('span', { class: 'bab-example-k', text: label }), h('span', { class: 'bab-example-say', text: ex.say })));
+    h('span', { class: 'bab-example-cap' },
+      h('span', { class: 'bab-example-say', text: ex.say }),
+      h('span', { class: 'bab-example-k', text: label })));
+}
+
+/**
+ * How a machine is a number, on one volume: the machine, the parts its normal
+ * form is made of, each read as a digit in its place, and the sum. It is the
+ * volume page's "spelled" section in miniature, and the idea the whole
+ * Library rests on.
+ */
+function howSection() {
+  const wing = wingByKey('dfa');
+  const params = [3, 2];
+  const volume = 977n;
+  let v, tiles;
+  try { v = openVolume({ wing, params, volume }); tiles = finiteTiles(wing, params, v.body); } catch { return null; }
+  if (!tiles) return null;
+  const open = () => go('babel-volume', volumeAddress(wing, params, volume));
+  const rule = t => `${t.key} ${String(t.value || '').startsWith('{') ? '=' : '→'} ${t.value || '—'}`;
+  return h('section', { class: 'bab-how', 'aria-label': 'How a machine is a number', data: { family: familyOf(wing) } },
+    h('div', { class: 'lib-sechead' }, h('h3', { class: 'lib-sechead-title', text: 'How a machine is a number' })),
+    h('ol', { class: 'bab-how-steps' },
+      h('li', {},
+        h('span', { class: 'bab-how-n', text: '1' }),
+        h('p', {}, h('strong', { text: 'One normal form. ' }), 'States are numbered from the start and letters are a, b, …, so two drawings of one machine are one book.'),
+        h('button', { type: 'button', class: 'bab-how-fig', title: `Open ${v.address}`, on: { click: open } }, plateFigure(v.doc, { w: 240, h: 130 }))),
+      h('li', {},
+        h('span', { class: 'bab-how-n', text: '2' }),
+        h('p', {}, h('strong', { text: 'Each part is a digit. ' }), 'Which states accept, and where each state goes on each letter, are digits, each in its own place.'),
+        h('div', { class: 'bab-how-tiles' }, tiles.map(t => h('span', { class: 'bab-how-tile', title: `${rule(t)}: digit ${t.digit} of ${t.radix}, × ${sayCount(t.place)}` },
+          h('b', { text: sayCount(t.digit * t.place) }), h('small', { text: rule(t) }))))),
+      h('li', {},
+        h('span', { class: 'bab-how-n', text: '3' }),
+        h('p', {}, h('strong', { text: 'The sum is its number. ' }), 'It runs both ways: every number is a machine, so nothing is stored and nothing is missing.'),
+        h('button', { type: 'button', class: 'bab-how-sum', title: `Open ${v.address}`, on: { click: open } },
+          h('span', { class: 'bab-sum', text: `${tiles.map(t => sayCount(t.digit * t.place)).join(' + ')} =` }),
+          h('span', { class: 'bab-how-num' }, h('span', { class: 'bab-number-mark', text: '№ ' }), groupDigits(volume)),
+          h('span', { class: 'bab-how-addr', text: v.address })))));
+}
+
+/** The volumes kept in My Library, as plates that open without the network. */
+function yoursSection() {
+  const kept = savedVolumes().slice(0, 6);
+  const plates = [];
+  for (const r of kept) {
+    let doc = null;
+    try { doc = JSON.parse(r.text); } catch { continue; }
+    const wing = wingOf(doc.machine);
+    plates.push(h('button', { type: 'button', class: 'bab-example', data: { family: wing ? familyOf(wing) : 'special' }, title: `Open ${r.entry.babel}`, on: { click: () => go('babel-volume', r.entry.babel) } },
+      plateFigure(doc, { w: 220, h: 120 }),
+      h('span', { class: 'bab-example-cap' },
+        h('span', { class: 'bab-example-say', text: r.entry.title }),
+        h('span', { class: 'bab-example-k', text: clip(r.entry.babel, 14, 6) }))));
+  }
+  if (!plates.length) return null;
+  reveal(plates);
+  return h('section', { class: 'bab-examples bab-yours', 'aria-label': 'Your volumes' },
+    h('div', { class: 'lib-sechead' },
+      h('h3', { class: 'lib-sechead-title', text: 'Your volumes' }),
+      button('My Library →', () => go('mine'), 'lib-textbtn')),
+    h('div', { class: 'bab-example-row' }, plates));
 }
 
 const SCALE = new Map();
@@ -382,8 +521,15 @@ function wingGroups() {
   const groups = [];
   const seen = new Set();
   for (const cat of MachineCategories || []) {
-    const wings = (cat.machines || []).map(t => wingOf(t)).filter(w => w && !seen.has(w.key));
-    wings.forEach(w => seen.add(w.key));
+    // A type with no wing of its own (DWA, NWA read into DBA, NBA) names its
+    // alias's wing, which this row may already hold: each wing is drawn once.
+    const wings = [];
+    for (const t of cat.machines || []) {
+      const w = wingOf(t);
+      if (!w || seen.has(w.key)) continue;
+      seen.add(w.key);
+      wings.push(w);
+    }
     if (wings.length) groups.push({ label: cat.label, family: cat.id, wings });
   }
   const rest = WINGS.filter(w => !seen.has(w.key));
@@ -404,10 +550,11 @@ function paintPreview(box, text) {
   let v;
   try { v = openVolume({ key: found.key, params: found.params, volume: found.volume }); }
   catch (e) { box.append(h('p', { class: 'bab-preview-err', text: e.message })); return; }
-  const said = sayVolume(v.wing, v.params, v.body);
+  const doc = foundDoc(v, found);
+  const said = sayVolume(v.wing, v.params, v.body, doc.sigma);
   box.append(
     h('button', { type: 'button', class: 'bab-preview-card', data: { family: familyOf(v.wing) }, title: `Open ${v.address}`, on: { click: () => followFound(found) } },
-      plateFigure(v.doc, { w: 300, h: 150 }),
+      plateFigure(doc, { w: 300, h: 150 }),
       h('span', { class: 'bab-preview-cap' },
         h('i', { class: 'lib-dot' }),
         h('span', { text: `${v.wing.type} · ${paramWords(v.wing, v.params)} · № ${showNumber(v.volume).text}` })),
@@ -419,8 +566,11 @@ function followFound(found) {
   if (found.kind === 'error') { showStatus(found.error); return; }
   if (found.kind === 'wing') { go('babel-wings', found.key); return; }
   if (found.kind === 'room') { go('babel-room', roomId(wingByKey(found.key), found.params)); return; }
-  if (found.names) B.names.set(found.address, found.names);
+  keepNames(found);
+  // What the Finder did to read it belongs to this lookup: an earlier one's
+  // notes ("its ^ and $ were dropped") must not stay on the volume.
   if (found.notes?.length) B.notes.set(found.address, found.notes);
+  else B.notes.delete(found.address);
   go('babel-volume', found.address);
 }
 
@@ -617,7 +767,7 @@ const PLATES = 24;
 
 function pageRoom(id) {
   const r = parseRoom(id);
-  if (!r) return errorPage('There is no such room', `“${id}” is not a room of the Library of Babel.`);
+  if (!r) return errorPage('There is no such room', `“${id}” is not a room of AutomataStudio Babel.`);
   const { wing, params } = r;
   const shape = roomShape(wing, params);
   const page = h('div', { class: 'lib-page bab-page bab-room', data: { family: familyOf(wing) } });
@@ -1022,42 +1172,120 @@ function pageVolume(address) {
   catch (e) { return errorPage('There is no such volume', e.message); }
   const { params, volume, body, doc } = v;
   const addr = v.address;
+  // What the page draws, runs, opens and saves: the volume in the reader's
+  // letters when they brought some. The facts and the spelling read the
+  // canonical document — the number is about a, b, ….
+  const own = readerDoc(wing, params, doc);
   const shape = roomShape(wing, params);
   const last = shape.finite ? shape.total - 1n : null;
   B.current = { wing, params, volume, last };
   const page = h('div', { class: 'lib-page bab-page bab-volume', data: { family: familyOf(wing) } });
   page.append(locationBar({ wing, params, volume, tail: positionTail(wing, params, volume) }));
 
-  // Its number, its number in the wing, and the two things to do with it.
+  // The head a catalogue entry has: what kind of machine, its name — here its
+  // number — what it does in a line, and the same three actions.
   const shown = showNumber(volume);
   let wingNo = null;
   try { const n = wingNumberOf(wing, params, volume); if (n.toString().length <= 30) wingNo = `${wing.type} № ${groupDigits(n)}`; } catch { /* past the search */ }
+  const target = targetFromDoc(own);
+  const said = sayLine(wing, params, body, own);
+  const code = machineCodeOf(own);
+  const standard = wing.kind === 'tm' ? standardOf(doc) : null;
   page.append(h('div', { class: 'bab-vol-head' },
     h('div', { class: 'bab-vol-title' },
+      h('p', { class: 'lib-kicker bab-vol-kicker' }, h('i', { class: 'lib-dot', 'aria-hidden': 'true' }), [fullName(wing), kindLine(wing, params, body)].filter(Boolean).join(' · ')),
       h('h2', { class: `bab-number${shown.long ? ' is-long' : ''}`, title: `Volume ${groupDigits(volume)}` }, h('span', { class: 'bab-number-mark', text: '№ ' }), shown.text),
       h('div', { class: 'bab-vol-sub' },
+        h('span', { title: `Room ${roomId(wing, params)}`, text: paramWords(wing, params) }),
         wingNo ? h('span', { title: `Its number in the whole ${wing.type} wing`, text: wingNo }) : null,
-        shown.long ? h('span', {}, `${groupDigits(shown.digits)} digits · `, button('copy', () => exportCopyText(volume.toString(), 'Every digit copied'), 'lib-textbtn')) : null,
-        shape.finite ? null : h('span', { title: 'An endless room orders its volumes by size', text: `size ${v.size}` }))),
-    h('div', { class: 'bab-vol-actions' },
-      button('Open on canvas', () => openOnCanvas(doc, addr), 'btn-p'),
-      saveButton(v, wingNo),
-      h('button', { type: 'button', class: 'bab-icon-btn', title: 'Copy a link to this volume', 'aria-label': 'Copy link', on: { click: () => exportCopyText(webAppLink({ action: 'babel', address: addr }), 'Link to this volume copied') } }, icon('link')))));
+        shown.long ? h('span', { title: 'The number is written out in full in the address and the copy' }, `${groupDigits(shown.digits)} digits · `, button('copy', () => exportCopyText(volume.toString(), 'Every digit copied'), 'lib-textbtn')) : null,
+        shape.finite ? null : h('span', { title: 'An endless room orders its volumes by size', text: `size ${v.size}` })),
+      said ? h('p', { class: 'lib-lede bab-lede', text: said }) : null),
+    volumeActions({ v, wingNo, own, addr, shown, code })));
 
   // The plate between its neighbours on the shelf, and its facts in the margin.
-  const target = targetFromDoc(doc);
-  const stage = volumeStage(target, doc);
-  const said = sayLine(wing, params, body, doc);
-  const figure = h('div', { class: 'bab-vol-fig' }, stage.node, said ? h('p', { class: 'bab-says', text: said }) : null, tryIt(target, stage));
+  const stage = volumeStage(target, own);
+  const figure = h('div', { class: 'bab-vol-fig' }, stage.node, tryIt(target, stage));
   const facts = h('aside', { class: 'bab-margin', 'aria-label': 'Facts' });
   page.append(h('div', { class: 'bab-vol-body' },
     h('div', { class: 'bab-shelf' }, sideVolume(wing, params, volume - 1n, last, 'prev'), figure, sideVolume(wing, params, volume + 1n, last, 'next')),
     facts));
-  fillFacts(facts, { wing, params, body, doc, volume, addr });
+  // A Turing machine is known by what it does from a blank tape: the section
+  // arrives with the verdict, which the worker works out.
+  const behaviour = wing.kind === 'tm' ? h('div', { class: 'bab-behaviour-slot' }) : null;
+  const onVerdict = behaviour ? verdict => {
+    behaviour.innerHTML = '';
+    behaviour.append(behaviourSection({ behaviour: verdict, standard }, { target }));
+  } : null;
+  fillFacts(facts, { wing, params, body, doc, own, volume, addr, onVerdict });
+  marginSections(facts, target, code);
 
+  if (behaviour) page.append(behaviour);
   page.append(spelledSection(wing, params, body, volume, stage));
   if (shape.finite) page.append(neighbourSection(wing, params, body, volume));
   return page;
+}
+
+/** What kind of language or behaviour, for the kicker: the line under a catalogue entry's type. */
+function kindLine(wing, params, body) {
+  if (wing.kind === 'fa') {
+    const t = dfaOf(wing.type, params, body);
+    return t ? `${CLASS_WORDS[languageClass(t)]} language` : null;
+  }
+  if (wing.kind === 'omega') return 'ω-regular language';
+  return null;
+}
+
+/** The machine code a volume is known by anywhere: pasted on a canvas it opens, in a search it finds. */
+function machineCodeOf(doc) {
+  try { return canonicalCodeOf(doc) || null; } catch { return null; }
+}
+
+/** A one-tape Turing machine's standard code (bbchallenge's), from the canonical document. */
+function standardOf(doc) {
+  try { return writeStandardTM(doc, doc.config.sym) || null; } catch { return null; }
+}
+
+/**
+ * The actions a catalogue entry has, in its words: open it, keep it, and the
+ * rest in a menu. Nothing here needs the network — the volume brings its own
+ * document — which is what makes the Library of Babel the offline half.
+ */
+function volumeActions({ v, wingNo, own, addr, shown, code }) {
+  const title = wingNo || `${v.wing.type} ${addr}`;
+  const file = `${addr.replace(/[^a-z0-9-]+/gi, '_').slice(0, 80)}.automaton`;
+  return h('div', { class: 'lib-actions bab-vol-actions' },
+    button('Open in a new tab', () => openOnCanvas(own, addr), 'btn-p', { 'data-tip': 'Open it on a canvas of its own' }),
+    saveButton(v, wingNo, own),
+    moreMenu([
+      canInsertAsBlock(own.machine) ? { label: `Insert into my ${App.machine} as a block`, run: () => insertDocAsBlock(JSON.parse(JSON.stringify(own)), title) } : null,
+      { label: 'Download the .automaton file', run: () => exportDownload(file, JSON.stringify(own, null, 2), 'application/x-automatastudio+json') },
+      { label: 'Copy link', run: () => exportCopyText(webAppLink({ action: 'babel', address: addr }), 'Link to this volume copied') },
+      { label: 'Copy the address', run: () => exportCopyText(addr, 'Address copied — paste it into the Entrance to come back') },
+      shown.long ? { label: `Copy all ${groupDigits(shown.digits)} digits`, run: () => exportCopyText(v.volume.toString(), 'Every digit copied') } : null,
+      code ? { label: 'Copy the machine code', run: () => exportCopyText(code, 'Machine code copied — paste it on any canvas to open it') } : null,
+      { label: 'Submit it to the catalogue', run: () => { if (openOnCanvas(own, addr)) { setView('library'); go('submit'); } } }
+    ]));
+}
+
+/**
+ * What a catalogue entry's aside holds beyond the facts: the formal definition,
+ * typeset from the machine itself, and the machine code with a copy.
+ */
+function marginSections(box, target, code) {
+  const math = h('div', { class: 'lib-math bab-math', 'aria-label': 'Formal definition' });
+  try {
+    math.textContent = withMachine(target, () => buildFormalDefLatex());
+    box.append(h('section', { class: 'lib-aside-sec bab-aside-sec' }, h('h4', { class: 'lib-aside-title', text: 'Definition' }), math));
+    triggerMath(math);
+  } catch { /* a machine the tuple writer cannot read: the facts stand */ }
+  if (code) {
+    box.append(h('section', { class: 'lib-aside-sec lib-machine-code bab-aside-sec' },
+      h('h4', { class: 'lib-aside-title', text: 'Machine code' }),
+      h('code', { class: 'lib-code-text', text: code }),
+      h('div', { class: 'lib-standard-actions' },
+        button('Copy', () => exportCopyText(code, 'Machine code copied — paste it on any canvas to open it'), 'lib-textbtn'))));
+  }
 }
 
 /**
@@ -1065,11 +1293,11 @@ function pageVolume(address) {
  * kept as the document the number spells, so it opens offline and lists beside
  * the catalogue's machines. The same button, the same words, the same store.
  */
-function saveButton(v, wingNo) {
+function saveButton(v, wingNo, doc = v.doc) {
   const id = `babel:${v.address}`;
   const saved = isInMyLibraryNow(id);
   const entry = { id, title: wingNo || `${v.wing.type} ${v.address}`, machine: v.wing.type, babel: v.address };
-  return button(saved ? 'Saved' : 'Save', () => toggleSavedVolume(entry, JSON.stringify(v.doc)), `btn-g${saved ? ' is-saved' : ''}`,
+  return button(saved ? 'Saved' : 'Save', () => toggleSavedVolume(entry, JSON.stringify(doc)), `btn-g${saved ? ' is-saved' : ''}`,
     { 'aria-pressed': saved ? 'true' : 'false', 'data-tip': saved ? 'In My Library — opens offline' : 'Keep a copy in My Library that opens offline' });
 }
 
@@ -1078,13 +1306,14 @@ function sideVolume(wing, params, volume, last, side) {
   if (volume < 0n || (last !== null && volume > last)) return h('div', { class: `bab-side is-${side} is-none` });
   let o;
   try { o = openVolume({ wing, params, volume }); } catch { return h('div', { class: `bab-side is-${side} is-none` }); }
-  const said = sayVolume(wing, params, o.body).text;
+  const od = readerDoc(wing, params, o.doc);
+  const said = sayVolume(wing, params, o.body, od.sigma).text;
   return h('button', {
     type: 'button', class: `bab-side is-${side}`, title: `${side === 'prev' ? 'Previous' : 'Next'} volume (${side === 'prev' ? '←' : '→'}) — ${said}`,
     on: { click: () => go('babel-volume', o.address, { push: false }) }
   },
-  plateFigure(o.doc, { w: 160, h: 120 }),
-  h('span', { class: 'bab-side-cap' }, side === 'prev' ? `‹ ${showNumber(volume).text}` : `${showNumber(volume).text} ›`),
+  plateFigure(od, { w: 160, h: 120 }),
+  h('span', { class: 'bab-side-cap', title: groupDigits(volume) }, side === 'prev' ? `‹ ${showNumber(volume).text}` : `${showNumber(volume).text} ›`),
   h('span', { class: 'bab-side-says', text: said }));
 }
 
@@ -1096,7 +1325,10 @@ function sayLine(wing, params, body, doc) {
     const c = languageClass(t);
     if (c === 'e') return 'Accepts nothing.';
     if (c === 'u') return 'Accepts every word.';
-    const words = firstWords(t, { count: 4 }).map(w => (w.length ? w.map(letterName).join('') : 'ε'));
+    const words = firstWords(t, { count: 4, maxLen: SHORT_WORD }).map(w => spellWord(w, doc.sigma));
+    // The search is exact to its length — every state a word of that length
+    // reaches is visited — so no word found means none that short exists.
+    if (!words.length) return `Accepts no word of ${SHORT_WORD} letters or fewer${c === 'f' ? '' : ', and infinitely many longer ones'}.`;
     return `Accepts ${words.join(', ')}${c === 'f' && words.length < 4 ? '' : ', …'}`;
   }
   if (wing.kind === 'omega') return classifyBody(wing, params, body) === 'o' ? 'Accepts some ω-word.' : 'Accepts no ω-word.';
@@ -1117,7 +1349,7 @@ function openOnCanvas(doc, addr) {
   const ok = applyDocument(JSON.stringify(doc), `${addr.replace(/[^a-z0-9-]+/gi, '_')}.automaton`, { tabName: addr });
   if (!ok) return false;
   if (App.view !== 'build') setView('build');
-  showStatus(`Opened ${addr} from the Library of Babel`);
+  showStatus(`Opened ${addr} from AutomataStudio Babel`);
   return true;
 }
 
@@ -1192,9 +1424,44 @@ function tryIt(target, stage) {
     }
   };
   input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); run(); } });
+  // A catalogue entry lists its author's examples; a volume has no author, so
+  // it lists the shortest words, each run on the machine when the page is up.
+  const examples = h('div', { class: 'lib-try-examples' });
+  const words = sampleWords(target);
+  if (words.length) {
+    setTimeout(() => {
+      const list = h('div', { class: 'lib-chips' });
+      for (const w of words) {
+        const chip = verdictChip(w, decideRaw(target, w));
+        chip.addEventListener('click', () => { input.value = w; run(); });
+        list.append(chip);
+      }
+      examples.append(h('span', { class: 'lib-try-label', text: 'The shortest words' }), list);
+    }, 0);
+  }
   return h('section', { class: 'lib-try bab-try' },
     h('div', { class: 'lib-try-row' }, input, button('Run', run, 'lib-textbtn bab-run')),
-    out);
+    out, examples);
+}
+
+/** The words a volume is tried on first: ε and the shortest words over its first letters, or a few lassos. */
+function sampleWords(target) {
+  const cfg = getMachineConfig(target.machine) || {};
+  const eps = target.config?.sym?.eps;
+  const letters = (target.sigma || []).filter(s => s !== eps && s !== target.config?.sym?.blank).slice(0, 3);
+  if (!letters.length || target.tapeCount > 1) return [];
+  const sep = letters.some(s => [...String(s)].length > 1) ? ' ' : '';
+  if (cfg.isOmega) {
+    const [a, b = a] = letters;
+    return [...new Set([`(${a})`, `(${b})`, `${a}(${b})`, `${b}(${a})`, `(${a}${sep}${b})`])];
+  }
+  const out = [''];
+  let layer = [''];
+  for (let len = 1; len <= 2 && out.length < 9; len++) {
+    layer = layer.flatMap(w => letters.map(a => (w ? `${w}${sep}${a}` : String(a))));
+    out.push(...layer);
+  }
+  return out.slice(0, wingOf(target.machine)?.kind === 'tm' ? 5 : 9);
 }
 
 /** A fact: a short label and its value over a hairline, with what it means in the tooltip. */
@@ -1207,7 +1474,7 @@ function fact(label, value, { title = '', cls = '' } = {}) {
 const CLASS_WORDS = { e: 'empty', u: 'everything', f: 'finite', c: 'cofinite', o: 'infinite, co-infinite' };
 
 /** The facts in the margin: one short row each, computed. */
-function fillFacts(box, { wing, params, body, doc, volume, addr }) {
+function fillFacts(box, { wing, params, body, doc, own = doc, volume, addr, onVerdict = null }) {
   if (wing.kind === 'fa') {
     const t = dfaOf(wing.type, params, body);
     if (t) {
@@ -1216,7 +1483,7 @@ function fillFacts(box, { wing, params, body, doc, volume, addr }) {
       box.append(fact('Language', CLASS_WORDS[c], { title: 'The class of the language it accepts' }));
       box.append(fact('Minimal', wing.type === 'DFA' && min.n === params[0] ? '✓ already' : `${min.n} state${min.n === 1 ? '' : 's'}`,
         { title: wing.type === 'DFA' && min.n === params[0] ? 'No smaller DFA says this' : 'The size of its minimal DFA' }));
-      const rows = languageRows(asSketchDfa(min, Array.from({ length: params[1] }, (_, i) => letterName(i))));
+      const rows = languageRows(asSketchDfa(min, Array.from({ length: params[1] }, (_, i) => own.sigma?.[i] ?? letterName(i))));
       if (rows) box.append(h('div', { class: 'bab-lang', title: 'Every word up to a length, one row per length, inked where accepted' }, svgFigure(drawLanguage(rows, { w: 260, h: 96 }), 'bab-lang-fig')));
     }
   } else if (wing.omega === 'buchi') {
@@ -1229,7 +1496,7 @@ function fillFacts(box, { wing, params, body, doc, volume, addr }) {
   } else if (wing.kind === 'tm') {
     const slot = h('div', { class: 'bab-fact-slot' });
     box.append(slot);
-    tmVerdict(slot, wing, params, volume, addr, 1e5);
+    tmVerdict(slot, wing, params, volume, addr, 1e5, onVerdict);
     const code = (() => { try { return writeStandardTM(doc, doc.config.sym); } catch { return null; } })();
     if (code) box.append(fact('Code', h('span', {}, h('a', { class: 'lib-link bab-code', href: bbchallengeUrl(code), target: '_blank', rel: 'noopener noreferrer', text: code, title: 'Open on bbchallenge.org' })), { title: 'Its standard code' }));
   }
@@ -1244,16 +1511,40 @@ function fillFacts(box, { wing, params, body, doc, volume, addr }) {
     try { c = canonicalOf(wing, params, body, { budget: 3000 }); } catch { twinVal.textContent = '—'; return; }
     twinVal.innerHTML = '';
     if (!c.exact) { twinVal.append('not settled within the budget'); return; }
-    twinVal.append(c.twins === 1n ? 'none' : sayCount(c.twins));
+    twinVal.append(c.twins === 1n ? 'none' : shortCount(c.twins));
     if (c.volume === volume) { if (c.twins !== 1n) twinVal.append(h('span', { class: 'bab-fact-note', text: ' · canonical copy' })); }
     else twinVal.append(h('span', { class: 'bab-fact-note' }, ' · canonical copy is ', button(showNumber(c.volume).text, () => go('babel-volume', volumeAddress(wing, params, c.volume)), 'bab-inline-btn')));
   }, 0);
 
-  catalogueFact(box, wing, params, body, doc);
+  catalogueFact(box, wing, params, body, doc, own);
   const notes = [...(B.notes.get(addr) || [])];
-  const names = B.names.get(addr);
-  if (names?.sigma?.length) notes.push(`Your letters ${names.sigma.join(', ')} are ${names.sigma.map((_, i) => letterName(i)).join(', ')} here.`);
   if (notes.length) box.append(h('p', { class: 'bab-note', text: notes.join(' ') }));
+  const lettering = letteringNote(wing, params, doc, own, addr);
+  if (lettering) box.append(lettering);
+}
+
+/**
+ * Whose letters the page is in. A volume's number is over the canonical
+ * a, b, …, so a machine over {x, y, z} is the same volume as its copy over
+ * {a, b, c}; the page draws it in the letters the reader brought, says so,
+ * and offers the canonical ones (one switch, for every room).
+ */
+function letteringNote(wing, params, doc, own, addr) {
+  const names = B.names.get(roomId(wing, params));
+  if (!names) return null;
+  const pairs = [];
+  const add = (mine, canon) => (mine || []).forEach((s, i) => { if (canon?.[i] !== undefined && String(s) !== String(canon[i])) pairs.push([String(s), String(canon[i])]); });
+  add(names.sigma, doc.sigma);
+  add(names.outputAlpha, doc.outputAlpha);
+  if (!pairs.length) return null;
+  const mine = pairs.map(p => p[0]).join(', '), canon = pairs.map(p => p[1]).join(', ');
+  // Letters a document could not take back (a multi-character name in a
+  // push string): the page stays canonical and says how they correspond.
+  if (own === doc && B.ownLetters) return h('p', { class: 'bab-note', text: `Your letters ${mine} are ${canon} here.` });
+  const flip = () => { B.ownLetters = !B.ownLetters; go('babel-volume', addr, { push: false }); };
+  return h('p', { class: 'bab-note' },
+    B.ownLetters ? `In your letters ${mine}; its number spells them ${canon}. ` : `In the Library's letters ${canon}; you wrote ${mine}. `,
+    button(B.ownLetters ? `Show ${canon}` : `Show ${mine}`, flip, 'bab-inline-btn'));
 }
 
 const TRANSDUCERS = new Set(['Moore', 'Mealy', 'FST', 'PDT', '2DFT']);
@@ -1269,13 +1560,14 @@ function shortWords(letters, maxLen) {
   return out;
 }
 
-function tmVerdict(slot, wing, params, volume, addr, budget) {
+function tmVerdict(slot, wing, params, volume, addr, budget, onVerdict = null) {
   slot.innerHTML = '';
   slot.append(fact('Blank tape', h('span', { class: 'bab-fact-note', text: 'running…' })));
   const key = `${addr}|${budget}`;
   const show = v => {
     slot.innerHTML = '';
     if (!v) { slot.append(fact('Blank tape', '—')); return; }
+    onVerdict?.(v);
     if (v.verdict === 'halts') {
       slot.append(fact('Halts', `${groupDigits(v.steps ?? 0)} step${v.steps === 1 ? '' : 's'}${v.ones !== undefined ? ` · ${groupDigits(v.ones)} cells` : ''}`, { cls: 'is-good', title: 'From a blank tape, proved by running it; cells are the non-blank cells it leaves' }));
     } else if (v.verdict === 'never') {
@@ -1283,7 +1575,7 @@ function tmVerdict(slot, wing, params, volume, addr, budget) {
     } else {
       const next = budget < 1e7 ? 1e7 : budget < 2e8 ? 2e8 : null;
       slot.append(fact('Halts?', h('span', {}, `unknown after ${sayCount(BigInt(Math.round(budget)))} steps`,
-        next ? [' · ', button('try harder', () => tmVerdict(slot, wing, params, volume, addr, next), 'bab-inline-btn')] : null), { cls: 'is-open' }));
+        next ? [' · ', button('try harder', () => tmVerdict(slot, wing, params, volume, addr, next, onVerdict), 'bab-inline-btn')] : null), { cls: 'is-open' }));
     }
   };
   if (B.verdicts.has(key)) { show(B.verdicts.get(key)); return; }
@@ -1317,11 +1609,11 @@ function renamedLetters(doc, to) {
 }
 
 /** Is this volume in the catalogue, under any names for its letters? Does a listed machine say the same? */
-function catalogueFact(box, wing, params, body, doc) {
+function catalogueFact(box, wing, params, body, doc, own = doc) {
   const index = cachedLibrary()?.index;
   const submit = button('submit it', () => {
     const b = doc.meta?.babel;
-    if (openOnCanvas(doc, b ? `${b.room}/${b.volume}` : 'babel')) { setView('library'); go('submit'); }
+    if (openOnCanvas(own, b ? `${b.room}/${b.volume}` : 'babel')) { setView('library'); go('submit'); }
   }, 'bab-inline-btn');
   if (!index?.entries?.length) { box.append(fact('Catalogue', h('span', {}, '— · ', submit), { title: 'The catalogue is the Library’s listed machines' })); return; }
   const n = doc.states.length;
@@ -1368,7 +1660,7 @@ function spelledSection(wing, params, body, volume, stage) {
       const go1 = d => go('babel-volume', volumeAddress(wing, params, nudge(tiles, volume, i, d)), { push: false });
       const rule = `${t.key} ${String(t.value || '').startsWith('{') ? '=' : '→'} ${t.value || '—'}`;
       const tile = h('div', { class: 'bab-tile', tabindex: '0', title: `${rule}: digit ${t.digit} of ${t.radix}, × ${sayCount(t.place)}` },
-        h('span', { class: 'bab-tile-term', text: sayCount(t.digit * t.place) }),
+        tileTerm(t.digit * t.place),
         h('span', { class: 'bab-tile-rule', text: rule }),
         h('span', { class: 'bab-tile-nudge' },
           button('↑', () => go1(1), 'bab-nudge', { 'aria-label': 'Next value for this part' }),
@@ -1399,6 +1691,12 @@ function spelledSection(wing, params, body, volume, stage) {
   return sec;
 }
 
+/** A term of the sum, set to fit its tile: a long one smaller, a huge one as a power of ten. */
+function tileTerm(n) {
+  const text = pretty(sayCount(n));
+  return h('span', { class: `bab-tile-term${[...text].length > 9 ? ' is-long' : ''}`, title: groupDigits(n), text });
+}
+
 /** Light the edge a tile is, where the wing says which edge that is. */
 function lightTile(stage, tile) {
   const live = stage?.live;
@@ -1422,10 +1720,11 @@ function neighbourSection(wing, params, body, volume) {
   for (const nb of near) {
     try {
       const o = openVolume({ wing, params, volume: nb.volume });
-      const said = sayVolume(wing, params, o.body).text;
+      const od = readerDoc(wing, params, o.doc);
+      const said = sayVolume(wing, params, o.body, od.sigma).text;
       const t = finiteTiles(wing, params, o.body)?.[nb.tile];
       row.append(h('button', { type: 'button', class: 'bab-near-chip', title: `${tiles[nb.tile].key}: ${t?.value || '—'} — ${said}`, on: { click: () => go('babel-volume', volumeAddress(wing, params, nb.volume)) } },
-        plateFigure(o.doc, { w: 160, h: 90 }),
+        plateFigure(od, { w: 160, h: 90 }),
         h('span', { class: 'bab-near-cap' }, h('span', { class: 'bab-near-num', text: showNumber(nb.volume).text }), h('span', { class: 'bab-near-change', text: `${tiles[nb.tile].key} → ${t?.value || '—'}` })),
         h('span', { class: 'bab-near-says', text: said })));
     } catch { /* past the room */ }
@@ -1437,21 +1736,9 @@ function neighbourSection(wing, params, body, volume) {
 
 // ── From the catalogue ────────────────────────────────────────────
 
-/**
- * A search the catalogue has no machine for → the Babel volume it names, when
- * it names one: an address, a machine code, a standard TM code, or a regular
- * expression that looks like one. Plain words are not a machine — the Finder
- * would read "palindrome" as the regex for that one word — and neither is a
- * bare number, which in a catalogue search is not a wing number.
- */
+/** A search the catalogue has no machine for → the Babel volume it names (find.js's `volumeNamedBy`). */
 export function babelLookup(query) {
-  const raw = String(query || '').trim();
-  if (!raw || /^\d[\d,_ ]*$/.test(raw)) return null;
-  let found;
-  try { found = findVolume(raw, { wing: B.wing }); } catch { return null; }
-  if (!found || found.kind !== 'volume') return null;
-  if (found.regex && !/[*+|()?ε∅]/.test(raw)) return null;
-  return found;
+  return volumeNamedBy(query, { wing: B.wing });
 }
 
 /**
@@ -1461,11 +1748,16 @@ export function babelLookup(query) {
  * Every machine is in the Library of Babel, so a search that finds nothing in
  * the catalogue has somewhere to go.
  */
-export function babelOffer(query, { canvas = false } = {}) {
+export function babelOffer(query, { canvas = false, also = false, offline = false } = {}) {
   let found = null;
   if (canvas) {
     try { found = findVolume('canvas'); } catch { found = null; }
   } else found = babelLookup(query);
+  // Beside catalogue results, only a machine the search itself names: the
+  // canvas, or a regular expression (a code or an address the catalogue lists
+  // is already among the results) — or why a programmer's regex names none.
+  const refused = found?.kind === 'error' && found.refused;
+  if (also && !refused && !(found?.kind === 'volume' && (canvas || found.regex))) return null;
   let v = null;
   if (found?.kind === 'volume') {
     try { v = openVolume({ key: found.key, params: found.params, volume: found.volume }); } catch { v = null; }
@@ -1473,25 +1765,32 @@ export function babelOffer(query, { canvas = false } = {}) {
   if (v) {
     let wingNo = null;
     try { const n = wingNumberOf(v.wing, v.params, v.volume); if (n.toString().length <= 30) wingNo = `${v.wing.type} № ${groupDigits(n)}`; } catch { /* past the search */ }
-    const said = found.regex ? `accepts ${found.regex}` : sayVolume(v.wing, v.params, v.body).text;
+    const doc = foundDoc(v, found);
+    const said = found.regex ? `accepts ${found.regex}` : sayVolume(v.wing, v.params, v.body, doc.sigma).text;
     const open = () => followFound(found);
-    return h('section', { class: 'bab-offer', data: { family: familyOf(v.wing) }, 'aria-label': 'In the Library of Babel' },
-      h('button', { type: 'button', class: 'bab-offer-fig', title: `Open ${v.address} in the Library of Babel`, 'aria-label': `Open ${v.address}`, on: { click: open } }, plateFigure(v.doc, { w: 300, h: 160 })),
+    return h('section', { class: 'bab-offer', data: { family: familyOf(v.wing) }, 'aria-label': 'In AutomataStudio Babel' },
+      h('button', { type: 'button', class: 'bab-offer-fig', title: `Open ${v.address} in AutomataStudio Babel`, 'aria-label': `Open ${v.address}`, on: { click: open } }, plateFigure(doc, { w: 300, h: 160 })),
       h('div', { class: 'bab-offer-text' },
-        h('span', { class: 'bab-kicker', text: 'The Library of Babel' }),
-        h('p', { class: 'bab-offer-say', text: canvas ? 'Your machine is not in the catalogue, but it has a volume in the Library of Babel.' : 'Not in the catalogue, but it has a volume in the Library of Babel.' }),
+        h('span', { class: 'bab-kicker', text: 'AutomataStudio Babel' }),
+        h('p', { class: 'bab-offer-say', text: offline
+          ? (canvas ? 'Your machine’s volume in AutomataStudio Babel.' : 'Its volume in AutomataStudio Babel.')
+          : also
+          ? (canvas ? 'No entry is your machine itself, but it has a volume in AutomataStudio Babel.' : 'The machine this expression describes has a volume in AutomataStudio Babel.')
+          : (canvas ? 'Your machine is not in the catalogue, but it has a volume in AutomataStudio Babel.' : 'Not in the catalogue, but it has a volume in AutomataStudio Babel.') }),
         h('span', { class: 'bab-offer-addr', text: `${wingNo ? `${wingNo} · ` : ''}${v.address}` }),
         said ? h('span', { class: 'bab-offer-says', text: said }) : null,
         button('Open the volume →', open, 'lib-textbtn bab-walk is-strong')));
   }
   const canvasHasMachine = (App.states || []).length > 0 && !canvas;
-  return h('section', { class: 'bab-offer is-plain', 'aria-label': 'The Library of Babel' },
+  return h('section', { class: 'bab-offer is-plain', 'aria-label': 'AutomataStudio Babel' },
     h('div', { class: 'bab-offer-text' },
-      h('span', { class: 'bab-kicker', text: 'The Library of Babel' }),
-      h('p', { class: 'bab-offer-say', text: 'Every machine that could exist has a volume there, this one too.' }),
-      h('span', { class: 'bab-offer-hint', text: found?.kind === 'error' && canvas ? found.error : 'Describe it as a regular expression or a machine code, or bring the one on your canvas.' }),
+      h('span', { class: 'bab-kicker', text: 'AutomataStudio Babel' }),
+      h('p', { class: 'bab-offer-say', text: refused
+        ? 'AutomataStudio Babel finds a regular expression by its minimal DFA, and this is not one it can read.'
+        : 'Every machine that could exist has a volume there, this one too.' }),
+      h('span', { class: 'bab-offer-hint', text: found?.kind === 'error' && (canvas || refused) ? found.error : 'Describe it as a regular expression or a machine code, or bring the one on your canvas.' }),
       h('div', { class: 'bab-offer-actions' },
-        button('Look it up in the Library of Babel →', () => go('babel'), 'lib-textbtn bab-walk is-strong'),
+        button('Look it up in AutomataStudio Babel →', () => go('babel'), 'lib-textbtn bab-walk is-strong'),
         canvasHasMachine ? button('Find my canvas there', () => followFound(findVolume('canvas')), 'lib-textbtn') : null)));
 }
 
@@ -1501,7 +1800,7 @@ export function babelOffer(query, { canvas = false } = {}) {
 export function babelRequest(req) {
   if (!req?.address) { go('babel', null, { reset: true }); return true; }
   const found = findVolume(req.address, { wing: B.wing });
-  if (!found || found.kind === 'error') { go('babel', null, { reset: true }); showStatus(found?.error || 'That is not an address in the Library of Babel.'); return false; }
+  if (!found || found.kind === 'error') { go('babel', null, { reset: true }); showStatus(found?.error || 'That is not an address in AutomataStudio Babel.'); return false; }
   if (found.kind === 'wing') go('babel-wings', found.key, { reset: true });
   else if (found.kind === 'room') go('babel-room', roomId(wingByKey(found.key), found.params), { reset: true });
   else go('babel-volume', found.address, { reset: true });

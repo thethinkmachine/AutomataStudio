@@ -85,8 +85,63 @@ function fromDocument(doc, how) {
   return { kind: 'volume', key: r.wing.key, params: r.params, volume: r.volume, address: r.address, how, names: r.names, notes: r.notes };
 }
 
+/**
+ * A catalogue search → the Babel volume it names, when it names one: an
+ * address, a machine code, a standard TM code, or a regular expression that
+ * looks like one. Plain words are not a machine — the Finder would read
+ * "palindrome" as the regex for that one word — and neither is a bare number,
+ * which in a catalogue search is not a wing number. Shared by the Library
+ * view's Browse and StateMate's search_library.
+ */
+export function volumeNamedBy(query, { wing = 'dfa' } = {}) {
+  const raw = String(query || '').trim();
+  if (!raw || /^\d[\d,_ ]*$/.test(raw)) return null;
+  let found;
+  try { found = findVolume(raw, { wing }); } catch { return null; }
+  // A programmer's regex the Finder will not read: the reason, not silence.
+  if (found?.kind === 'error' && found.refused) return found;
+  if (!found || found.kind !== 'volume') return null;
+  if (found.regex && !/[*+|()?ε∅]/.test(raw)) return null;
+  return found;
+}
+
+/**
+ * What a programmer's regex has that the textbook notation does not, refused
+ * with a reason. Thompson's parser (the Algorithms view's dialect) has no
+ * escapes, so it would read `\1`, `(?=`, `^` and `$` as letters and hand back
+ * a DFA for some other language over an alphabet with `\` and `=` in it — a
+ * volume that looks like an answer and is not one. `(?:…)` is only a group,
+ * and anchors at the ends say what the Finder always does (match the whole
+ * word), so those two are read rather than refused.
+ */
+export function regexNotation(text) {
+  let re = text.replace(/\(\?:/g, '(');
+  const notes = [];
+  if (/\\\d/.test(re)) {
+    return { error: 'Backreferences (\\1, \\2, …) are not regular-expression notation: they can describe languages no finite automaton accepts — (a*)b\\1 is aⁿbaⁿ — so the Finder has no minimal DFA to number. A volume for one would be a linear bounded automaton, and no single LBA is the canonical one for a language.' };
+  }
+  if (/\(\?<?[=!]/.test(re)) {
+    return { error: 'Lookarounds ((?=…), (?!…), (?<=…), (?<!…)) are not in the textbook notation the Finder reads. Without backreferences they still describe regular languages, but the Finder does not build them: write the expression without them.' };
+  }
+  if (/\(\?/.test(re)) {
+    return { error: '“(?…)” groups — named groups, flags, recursion — are not in the textbook notation the Finder reads: letters, |, *, +, ?, {n,m}, ., [ ] and brackets.' };
+  }
+  if (re.includes('\\')) {
+    return { error: 'Escapes (\\d, \\., …) are not in the textbook notation the Finder reads: letters, |, *, +, ?, {n,m}, ., [ ] and brackets.' };
+  }
+  const bare = re.replace(/^\^/, '').replace(/\$$/, '');
+  if (/[\^$]/.test(bare)) {
+    return { error: '^ and $ only mean something at the two ends, where the Finder drops them: it always matches the whole word.' };
+  }
+  if (bare !== re) notes.push('Its ^ and $ were dropped: the Finder always matches the whole word.');
+  return { re: bare, notes };
+}
+
 /** A regular expression → its minimal DFA's canonical volume. */
-export function fromRegex(re) {
+export function fromRegex(text) {
+  const read = regexNotation(text);
+  if (read.error) return { kind: 'error', error: read.error, refused: true };
+  const re = read.re;
   let nfa;
   try { nfa = thompsonBuild(re); }
   catch (e) { return { kind: 'error', error: `Not a number, an address, a code or a regular expression: ${e.message}` }; }
@@ -108,6 +163,7 @@ export function fromRegex(re) {
   return {
     kind: 'volume', key: 'dfa', params, volume,
     address: formatAddress({ key: 'dfa', params, volume }),
-    how: `the minimal DFA for ${re}`, names: { sigma: letters }, regex: re
+    how: `the minimal DFA for ${re}`, names: { sigma: letters }, regex: text,
+    ...(read.notes.length ? { notes: read.notes } : {})
   };
 }

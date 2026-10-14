@@ -20,6 +20,7 @@ import { hasSingleValuedDelta } from '../core/utils.js';
 import { cachedLibrary, loadLibrary } from '../library/client.js';
 import { queryLibrary } from '../library/index-model.js';
 import { webAppLink } from '../library/config.js';
+import { volumeNamedBy } from '../babel/find.js';
 
 export const MAX_AGENT_STEPS = 16;
 // Six was too tight to describe a machine in: a five-state DFA over two
@@ -47,6 +48,20 @@ const integer = (value, fallback, min, max) => {
   const n = Number(value);
   return Number.isInteger(n) ? Math.max(min, Math.min(max, n)) : fallback;
 };
+
+/** The Library of Babel volume a library query names, as a tool result — computed, so it needs no index or network. */
+function babelVolumeOf(query) {
+  const found = volumeNamedBy(query);
+  if (!found) return null;
+  // A backreference or a lookaround: say why there is no volume, so the
+  // answer is not a DFA for the expression's punctuation.
+  if (found.kind === 'error') return { refused: found.error };
+  return {
+    address: found.address, how: found.how, ...(found.regex ? { regex: found.regex } : {}),
+    link: webAppLink({ action: 'babel', address: found.address }),
+    note: 'Not a catalogue entry: a volume of AutomataStudio Babel, which numbers every machine. Its facts are computed from the machine, not written by anyone.'
+  };
+}
 
 function emptyDraft(machine) {
   return {
@@ -708,23 +723,23 @@ const DEFINITIONS = {
     run: (a, s) => testWordsFor(s.draft.machine, a.alphabet || s.draft.sigma, integer(a.max_length, 4, 0, 6))
   },
   search_library: {
-    access: 'read', args: { query: 'string', limit: 'integer 1..10?' }, description: 'Search the shared machine library for existing machines (title, type, tags; also "type:DFA", "accepts:0110", "badge:minimal"). Use it to point the user at a verified machine instead of building one, or to find one to build on.',
+    access: 'read', args: { query: 'string', limit: 'integer 1..10?' }, description: 'Search the shared machine library for existing machines (title, type, tags; also "type:DFA", "accepts:0110", "badge:minimal"). Use it to point the user at a verified machine instead of building one, or to find one to build on. A query that is a regular expression, a machine code or an AutomataStudio Babel address also returns `babel`: the volume of that machine in AutomataStudio Babel, which holds every machine and needs no network.',
     run: a => {
+      const query = String(a.query || '');
+      const babel = babelVolumeOf(query);
       const held = cachedLibrary();
       if (!held?.index) {
         // Tools answer synchronously, so the first call starts the download
         // and says so; the next call has it.
         loadLibrary().catch(() => {});
-        return { available: false, note: 'The library index is loading — call search_library again in a moment.' };
+        return { available: false, note: 'The library index is loading — call search_library again in a moment.', ...(babel ? { babel } : {}) };
       }
-      return {
-        available: true,
-        results: queryLibrary(held.index, String(a.query || '')).slice(0, integer(a.limit, 5, 1, 10)).map(e => ({
-          id: e.id, title: e.title, machine: e.machine, states: e.stats.states, blurb: e.blurb,
-          verified: e.badges.map(b => b.id), author: e.author.login,
-          link: webAppLink({ action: 'show', id: e.id })
-        }))
-      };
+      const results = queryLibrary(held.index, query).slice(0, integer(a.limit, 5, 1, 10)).map(e => ({
+        id: e.id, title: e.title, machine: e.machine, states: e.stats.states, blurb: e.blurb,
+        verified: e.badges.map(b => b.id), author: e.author.login,
+        link: webAppLink({ action: 'show', id: e.id })
+      }));
+      return { available: true, results, ...(babel && (!results.length || babel.regex || babel.refused) ? { babel } : {}) };
     }
   },
   lint_machine: {

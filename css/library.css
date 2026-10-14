@@ -86,13 +86,21 @@
 #v-library .lib-textbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
 
 /* ── the status line ── */
-.lib-status {
-  position: sticky; top: 0; z-index: 3;
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 0 11px; margin-bottom: 18px;
+/* One header on every Library page, the catalogue's (.lib-status) and
+   AutomataStudio Babel's (.bab-loc): the same box, the same padding, and a
+   first row 26px tall that carries Back, the name, and what is said on the
+   right — so moving between the two moves nothing. Babel's second row is the
+   address's captions and the shelf's track; the catalogue's is empty. */
+.lib-status, .bab-loc {
+  position: sticky; top: 0; z-index: 4; box-sizing: border-box;
+  display: flex; align-items: flex-start; gap: 14px; min-height: 66px;
+  padding: 14px 0 10px;
   background: var(--bg2); border-bottom: 1px solid var(--border);
 }
-.lib-status-text { flex: 1; min-width: 0; font-family: var(--mono); font-size: .64rem; letter-spacing: .02em; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* As wide as the page under it, which is as wide as Babel's bar can be. */
+.lib-status { margin-bottom: 18px; max-width: 1120px; }
+#v-library .lib-status > .lib-textbtn { line-height: 26px; }
+.lib-status-text { flex: 1; min-width: 0; line-height: 26px; text-align: right; font-family: var(--mono); font-size: .64rem; letter-spacing: .02em; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #v-library .lib-status .lib-textbtn { font-size: .74rem; }
 
 /* ── section heads ── */
@@ -709,43 +717,77 @@
 .bab-reveal:nth-child(n+6) { transition-delay: 300ms; }
 
 /* ── where you are: the address, each part named underneath ── */
-.bab-loc {
-  position: sticky; top: 0; z-index: 4;
-  display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;
-  padding: 12px 0 9px; margin-bottom: -8px;
-  background: var(--bg2); border-bottom: 1px solid var(--border);
+/* Babel's bar is the first thing in its page, which is padded 8px at the top
+   and spaced by its gap; the catalogue's sits above its page. These undo the
+   difference so both bars start, and end, in the same place. */
+.bab-loc { flex-wrap: wrap; margin: -8px 0 -14px; }
+/* Back, the same chevron on every Library page (backButton in dom.js). */
+#v-library .lib-back {
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-grid; place-items: center; flex: none;
+  width: 26px; height: 26px; margin: 0 -6px; border-radius: 6px; color: var(--text3);
 }
-#v-library .bab-loc-back {
-  all: unset; box-sizing: border-box; cursor: pointer; display: inline-grid; place-items: center; align-self: center;
-  width: 26px; height: 26px; border-radius: 6px; color: var(--text3);
+#v-library .lib-back svg { width: 15px; height: 15px; }
+#v-library .lib-back:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#v-library .lib-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* "AutomataStudio Library", "AutomataStudio Babel": the app's own logo and
+   wordmark (css/layout.css .logo-mark, .logo), then the part's name in the
+   serif — the lockup the website's header uses (site.css .brand). */
+.lib-brand { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; line-height: 1; }
+.lib-brand-mark { display: inline-flex; align-self: center; flex: none; width: 22px; height: 22px; color: var(--text); }
+.lib-brand-mark svg { width: 100%; height: 100%; overflow: visible; }
+.lib-brand-logo { font-family: var(--sans); font-size: 1.06rem; font-weight: 600; letter-spacing: -.02em; color: var(--text); }
+.lib-brand-logo em { font-style: normal; font-weight: 400; color: var(--accent); }
+.lib-brand-sub {
+  margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border2);
+  font-family: var(--serif); font-style: italic; font-size: 1.08rem; color: var(--text2); transition: color var(--transition-fast);
 }
-#v-library .bab-loc-back:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-#v-library .bab-loc-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The catalogue's header names it on the left, as the website's does, and
+   says how fresh it is on the right, beside Refresh. */
+#v-library .lib-status-brand { all: unset; box-sizing: border-box; cursor: pointer; flex: none; display: inline-flex; align-items: center; height: 26px; }
+/* A phone has room for the name and Refresh, not for a count cut to "257 …". */
+@media (max-width: 600px) { .lib-status-text { visibility: hidden; } }
+#v-library .lib-status-brand:hover .lib-brand-sub { color: var(--accent); }
+#v-library .lib-status-brand[aria-current="page"] .lib-brand-sub { color: var(--text); }
+#v-library .lib-status-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
 /* The address, exactly as it is typed: one face, one weight, the part you are
    on darker. The family's hue is a dot before the wing, never an underline,
    which would read as a link. Babel is the label of the place, not a part of
    the address, so it is set apart by a hairline and carries no caption. */
-.bab-crumb { display: flex; align-items: flex-start; flex-wrap: wrap; min-width: 0; }
+/* One line, whatever the address: a long room or volume is clipped to its two
+   ends by the page (clip() in babel-ui.js), never wrapped across the bar. */
+.bab-crumb { display: flex; align-items: flex-start; flex-wrap: nowrap; min-width: 0; }
 #v-library .bab-crumb-seg {
   all: unset; box-sizing: border-box; display: inline-flex; flex-direction: column; gap: 3px; min-width: 0; cursor: pointer;
 }
 #v-library span.bab-crumb-seg { cursor: default; }
 .bab-crumb-word {
   display: inline-flex; align-items: center; gap: 7px;
-  font-family: var(--mono); font-size: 1rem; font-weight: 500; line-height: 1.4rem; color: var(--text2);
-  font-variant-numeric: tabular-nums; overflow-wrap: anywhere; transition: color var(--transition-fast);
+  min-height: 26px; font-family: var(--mono); font-size: 1rem; font-weight: 500; line-height: 26px; color: var(--text2);
+  font-variant-numeric: tabular-nums; white-space: nowrap; transition: color var(--transition-fast);
 }
 .bab-crumb-dot { width: 7px; height: 7px; }
 .bab-crumb-cap { font-size: .6rem; letter-spacing: .06em; line-height: 1; color: var(--text3); }
 .bab-crumb-seg.is-wing .bab-crumb-cap { padding-left: 14px; }
-#v-library .bab-crumb-seg.is-root { align-self: stretch; margin-right: 14px; padding-right: 14px; border-right: 1px solid var(--border); }
-.bab-crumb-seg.is-root .bab-crumb-word { font-family: var(--sans); font-size: .64rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--text3); }
+/* The place, not a part of the address: "AutomataStudio | Babel" on the
+   address's own line, the address after it with room to breathe. */
+#v-library .bab-crumb-seg.is-root { margin-right: 26px; }
+.bab-crumb-seg.is-root .bab-crumb-word { font-weight: 400; color: var(--text2); }
+#v-library button.bab-crumb-seg.is-root:hover .lib-brand-sub { color: var(--accent); }
+/* On the Entrance the place is the page: darker, never bold — weight is the
+   address's way of marking where you are, and a bold italic reads as shouting. */
+.bab-crumb-seg.is-root.is-here .bab-crumb-word { font-weight: 400; color: var(--text); }
+.bab-crumb-seg.is-root.is-here .lib-brand-sub { color: var(--text); }
+#v-library .bab-crumb-seg.is-root:only-child { margin-right: 0; }
 .bab-crumb-seg.is-here .bab-crumb-word { color: var(--text); font-weight: 600; }
 #v-library button.bab-crumb-seg:hover .bab-crumb-word { color: var(--accent); }
-#v-library button.bab-crumb-seg:hover .bab-crumb-word { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+#v-library button.bab-crumb-seg:not(.is-root):hover .bab-crumb-word { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
 #v-library button.bab-crumb-seg:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
-.bab-crumb-sep { font-family: var(--mono); font-size: 1rem; line-height: 1.4rem; color: var(--text3); padding: 0 3px; }
-.bab-loc-tail { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.bab-crumb-sep { font-family: var(--mono); font-size: 1rem; line-height: 26px; color: var(--text3); padding: 0 3px; }
+.bab-loc-tail { margin-left: auto; display: flex; align-items: flex-start; gap: 6px; }
+.bab-loc-note { font-family: var(--mono); font-size: .68rem; line-height: 26px; color: var(--text3); cursor: help; }
+#v-library button.bab-crumb-seg.is-here:hover .bab-crumb-word { color: var(--text); text-decoration-style: dotted; }
 #v-library .bab-step {
   all: unset; box-sizing: border-box; cursor: pointer; display: inline-grid; place-items: center;
   min-width: 26px; height: 26px; border-radius: 6px; font-size: 1.2rem; line-height: 1; color: var(--text2);
@@ -753,8 +795,8 @@
 #v-library .bab-step:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 #v-library .bab-step:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #v-library .bab-step[disabled] { opacity: .3; pointer-events: none; }
-.bab-pos { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 170px; cursor: help; }
-.bab-pos-say { font-family: var(--mono); font-size: .68rem; color: var(--text2); white-space: nowrap; }
+.bab-pos { display: flex; flex-direction: column; align-items: center; gap: 0; width: auto; min-width: 170px; cursor: help; }
+.bab-pos-say { font-family: var(--mono); font-size: .68rem; line-height: 26px; color: var(--text2); white-space: nowrap; }
 .bab-pos-track { position: relative; width: 100%; height: 9px; border-left: 1px solid var(--border2); border-right: 1px solid var(--border2); }
 .bab-pos-track::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: var(--border2); }
 .bab-pos-mark { position: absolute; top: 0; width: 2px; height: 9px; margin-left: -1px; background: var(--h, var(--accent)); }
@@ -799,9 +841,34 @@
 .bab-example .lib-fig { aspect-ratio: 220 / 120; }
 #v-library .bab-example:hover .lib-fig { border-color: color-mix(in srgb, var(--h, var(--accent)) 45%, var(--border2)); }
 #v-library .bab-example:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
-.bab-example-cap { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; }
+.bab-example-cap { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .bab-example-k { font-family: var(--mono); font-size: .76rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bab-example-say { font-size: .7rem; color: var(--text3); white-space: nowrap; }
+.bab-example-say { font-size: .7rem; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bab-yours { margin-top: 6px; }
+
+/* How a machine is a number: three steps on one volume, as a textbook margin
+   would set them — a figure, the digits, the sum. */
+.bab-how { display: flex; flex-direction: column; gap: 18px; }
+.bab-how-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin: 0; padding: 0; list-style: none; }
+.bab-how-steps > li { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.bab-how-steps p { margin: 0; font-size: .86rem; line-height: 1.55; color: var(--text2); }
+.bab-how-steps strong { font-family: var(--serif); font-size: 1.08rem; font-weight: 400; color: var(--text); }
+.bab-how-n {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--h, var(--accent)); font-family: var(--mono); font-size: .72rem; color: var(--h, var(--accent));
+}
+#v-library .bab-how-fig, #v-library .bab-how-sum { all: unset; box-sizing: border-box; cursor: pointer; display: block; }
+.bab-how-fig .lib-fig { aspect-ratio: 240 / 130; }
+#v-library .bab-how-fig:hover .lib-fig { border-color: color-mix(in srgb, var(--h, var(--accent)) 45%, var(--border2)); }
+#v-library .bab-how-fig:focus-visible, #v-library .bab-how-sum:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
+.bab-how-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; }
+.bab-how-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 4px; border: 1px solid var(--border2); border-radius: 5px; cursor: help; }
+.bab-how-tile b { font-family: var(--mono); font-weight: 400; font-size: .9rem; color: var(--text); }
+.bab-how-tile small { font-family: var(--mono); font-size: .58rem; color: var(--text3); white-space: nowrap; }
+#v-library .bab-how-sum { display: flex; flex-direction: column; gap: 6px; }
+.bab-how-num { font-family: var(--serif); font-size: 2.6rem; line-height: 1; color: var(--text); }
+#v-library .bab-how-sum:hover .bab-how-num { color: var(--accent); }
+.bab-how-addr { font-family: var(--mono); font-size: .72rem; color: var(--text3); }
 .bab-example-fig { display: grid; place-items: center; }
 .bab-random-glyph { font-size: 2rem; line-height: 1; color: var(--text3); }
 #v-library .bab-example.is-random:hover .bab-random-glyph { color: var(--accent); }
@@ -984,17 +1051,17 @@
 .bab-minimap-say { font-size: .7rem; color: var(--text3); }
 
 /* ── a volume: its plate between its neighbours, its facts in the margin ── */
-.bab-vol-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
-.bab-vol-title { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; min-width: 0; }
+.bab-vol-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px 28px; flex-wrap: wrap; }
+.bab-vol-title { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; flex: 1 1 420px; }
+.bab-vol-kicker { color: var(--text2); }
+#v-library .bab-lede { color: var(--text); font-style: italic; overflow-wrap: anywhere; }
 #v-library .bab-number { margin: 0; font-family: var(--serif); font-weight: 400; font-size: clamp(2.6rem, 4.6vw, 3.8rem); line-height: .95; color: var(--text); overflow-wrap: anywhere; }
 #v-library .bab-number.is-long { font-size: clamp(1.8rem, 3vw, 2.6rem); }
 .bab-number-mark { font-size: .62em; color: var(--text3); }
 .bab-vol-sub { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--mono); font-size: .76rem; color: var(--text2); }
 .bab-vol-sub > span { cursor: help; }
-.bab-vol-actions { display: flex; align-items: center; gap: 8px; }
-#v-library .bab-icon-btn { all: unset; box-sizing: border-box; cursor: pointer; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 6px; color: var(--text2); }
-#v-library .bab-icon-btn:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-#v-library .bab-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bab-vol-sub > span + span::before { content: '·'; margin-right: 14px; color: var(--text3); }
+.bab-vol-actions { flex-wrap: nowrap; margin-top: 0; }
 .bab-vol-body { display: grid; grid-template-columns: minmax(0, 1fr) 272px; gap: 34px; align-items: start; container: bab-vol / inline-size; }
 .bab-shelf { display: grid; grid-template-columns: 112px minmax(0, 1fr) 112px; gap: 18px; align-items: center; min-width: 0; }
 .bab-vol-fig { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -1006,7 +1073,7 @@
 #v-library .bab-side:focus-visible .lib-fig { border-color: var(--accent); }
 .bab-side.is-none { visibility: hidden; }
 .bab-side .lib-fig { aspect-ratio: 160 / 120; }
-.bab-side-cap { font-family: var(--mono); font-size: .72rem; color: var(--text2); }
+.bab-side-cap { font-family: var(--mono); font-size: .72rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bab-side-says { font-family: var(--serif); font-style: italic; font-size: .82rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bab-side.is-next .bab-side-cap, .bab-side.is-next .bab-side-says { text-align: right; }
 .bab-try .lib-try-row { gap: 12px; align-items: baseline; }
@@ -1027,6 +1094,8 @@
 .bab-code { font-family: var(--mono); font-size: .7rem; white-space: nowrap; }
 .bab-fact-v:has(.bab-code) { overflow-x: auto; }
 .bab-margin > .bab-note { padding: 10px 0; }
+.bab-margin > .bab-aside-sec { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.bab-math { font-size: .8rem; }
 .bab-table { display: flex; flex-direction: column; gap: 8px; padding: 12px; overflow: auto; }
 .bab-table table { border-collapse: collapse; font-family: var(--mono); font-size: .76rem; }
 .bab-table th, .bab-table td { text-align: left; padding: 3px 12px 3px 0; border-bottom: 1px solid var(--border); color: var(--text); }
@@ -1037,7 +1106,7 @@
 .bab-spelled, .bab-near { display: flex; flex-direction: column; gap: 14px; }
 .bab-spelled > .lib-sechead, .bab-near > .lib-sechead { cursor: help; }
 .bab-spelled-key { font-size: .74rem; color: var(--text3); }
-.bab-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.bab-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 8px; }
 .bab-tiles.is-parts { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
 .bab-tile {
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; padding: 12px 8px 10px;
@@ -1047,7 +1116,8 @@
 .bab-tile:hover, .bab-tile:focus-visible { border-color: var(--h, var(--accent)); background: color-mix(in srgb, var(--h, var(--accent)) 10%, transparent); }
 .bab-tile.is-part { align-items: flex-start; text-align: left; }
 .bab-tile.is-more { justify-content: center; font-family: var(--mono); font-size: .8rem; color: var(--text3); border-style: dashed; }
-.bab-tile-term { font-family: var(--mono); font-size: 1.15rem; line-height: 1.2; color: var(--text); overflow-wrap: anywhere; }
+.bab-tile-term { font-family: var(--mono); font-size: 1.15rem; line-height: 1.2; color: var(--text); white-space: nowrap; }
+.bab-tile-term.is-long { font-size: .84rem; line-height: 1.6; }
 .bab-tile-rule { font-family: var(--mono); font-size: .68rem; color: var(--text2); overflow-wrap: anywhere; }
 .bab-tile-val { font-family: var(--serif); font-size: 1.05rem; color: var(--text); overflow-wrap: anywhere; }
 .bab-tile-nudge { position: absolute; right: 3px; top: 3px; display: none; flex-direction: column; gap: 1px; }
@@ -1106,6 +1176,13 @@
   .bab-minimap-box { width: auto; }
   .bab-lattice { grid-template-columns: 52px repeat(var(--cols), minmax(30px, 1fr)); }
   .bab-loc-tail { margin-left: 0; width: 100%; }
+  /* The name over the address rather than beside it: both whole, Back beside them. */
+  .bab-loc { flex-wrap: nowrap; }
+  .bab-loc:has(> .bab-loc-tail) { flex-wrap: wrap; }
+  .bab-crumb { flex: 1; flex-wrap: wrap; row-gap: 6px; }
+  #v-library .bab-crumb-seg.is-root { flex-basis: 100%; margin-right: 0; }
+  .bab-how-steps { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .bab-vol-actions { flex-wrap: wrap; }
   .bab-pos { flex: 1; width: auto; }
   .bab-tile-nudge { display: flex; }
 }

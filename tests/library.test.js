@@ -1884,7 +1884,7 @@ test('the website\'s search turns a pasted machine code into its machine, with t
   assert.match(site, /queryLibrary\(index, codeSearchText\(text\)/);
 });
 
-test('a search the catalogue has no machine for is offered the machine\'s volume in the Library of Babel', async () => {
+test('a search the catalogue has no machine for is offered the machine\'s volume in AutomataStudio Babel', async () => {
   const b = await builtLibrary();
   resetApp();
   context.fetch = fakeFetch({ 'index.json': JSON.stringify({ ...b.raw, commit: '' }) });
@@ -1900,7 +1900,7 @@ test('a search the catalogue has no machine for is offered the machine\'s volume
   };
   // A regular expression names a machine: its minimal DFA's volume, as a plate.
   const offer = search('(a|b)*abb');
-  assert.ok(offer, 'an empty search offers the Library of Babel');
+  assert.ok(offer, 'an empty search offers AutomataStudio Babel');
   assert.match(textOf(offer), /Not in the catalogue/);
   assert.match(textOf(offer), /dfa-4-2\/121112/);
   assert.equal(findAll(offer, n => n.classList?.contains('lib-fig')).length, 1, 'drawn as a plate');
@@ -1911,13 +1911,157 @@ test('a search the catalogue has no machine for is offered the machine\'s volume
   context.go('browse');
   const plain = search('zqxj palindrome');
   assert.ok(plain.classList.contains('is-plain'));
-  assert.match(textOf(plain), /Look it up in the Library of Babel/);
+  assert.match(textOf(plain), /Look it up in AutomataStudio Babel/);
   assert.doesNotMatch(textOf(plain), /dfa-\d/);
+  // A programmer's regex is told why it has no volume, never given one for its punctuation.
+  const backref = search('(a*)b\\1');
+  assert.ok(backref.classList.contains('is-plain'));
+  assert.match(textOf(backref), /not one it can read/);
+  assert.match(textOf(backref), /Backreferences/);
+  assert.doesNotMatch(textOf(backref), /dfa-\d/);
   // A search the catalogue answers offers nothing.
   assert.equal(search('busy beaver'), null);
 });
 
-test('a Library of Babel volume saves to My Library as a catalogue entry does, and opens from there', async () => {
+test('every Library page is headed by its name, AutomataStudio Library or AutomataStudio Babel, in the app\'s own logo', async () => {
+  const b = await builtLibrary();
+  seedTab();
+  context.fetch = fakeFetch({ 'index.json': JSON.stringify({ ...b.raw, commit: '' }) });
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  const host = context.document.getElementById('lib-content');
+  const lockup = () => findAll(host, n => n.classList?.contains('lib-brand'))[0];
+  context.go('browse', null, { reset: true });
+  assert.equal(textOf(lockup()), 'AutomataStudioLibrary');
+  assert.match(findAll(lockup(), n => n.classList?.contains('lib-brand-mark'))[0].innerHTML, /#logo-mark/, 'the app\'s logo, by reference');
+  findAll(host, n => n.classList?.contains('lib-status-brand'))[0]._listeners.click({});
+  assert.equal(context.libraryRoute().page, 'discover', 'the name goes home');
+  context.go('babel-volume', 'dfa-3-2/977');
+  assert.equal(textOf(lockup()), 'AutomataStudioBabel');
+  assert.ok(findAll(host, n => n.classList?.contains('lib-back')).length, 'Back is the same chevron on both');
+  findAll(host, n => n.classList?.contains('bab-crumb-seg') && n.classList.contains('is-root'))[0]._listeners.click({});
+  assert.equal(context.libraryRoute().page, 'babel');
+});
+
+test('a machine looked up in its own letters is shown, opened and saved in them, though its number is over a, b', async () => {
+  const b = await builtLibrary();
+  seedTab();
+  for (const r of await context.listMyLibrary()) await context.removeFromMyLibrary(r.id);
+  context.fetch = fakeFetch({ 'index.json': JSON.stringify({ ...b.raw, commit: '' }) });
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  context.go('browse', null, { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const input = findAll(host, n => n.classList?.contains('lib-search'))[0];
+  input.value = '(x|y)*xyy';
+  input._listeners.keydown({ key: 'Enter', preventDefault() {} });
+  const offer = findAll(host, n => n.classList?.contains('bab-offer'))[0];
+  // The same volume as (a|b)*abb: the number does not care what the letters are called.
+  assert.match(textOf(offer), /dfa-4-2\/121112/);
+  findAll(offer, n => n.classList?.contains('bab-walk'))[0]._listeners.click({});
+  assert.equal(context.libraryRoute().id, 'dfa-4-2/121112');
+  let page = textOf(host);
+  assert.match(page, /Accepts xyy, /, 'the language in the reader\'s letters');
+  assert.match(page, /In your letters x, y; its number spells them a, b\./);
+  // Its neighbours on the shelf are in the same room, so they read in x, y too.
+  const side = findAll(host, n => n.classList?.contains('bab-side-says')).map(textOf).join(' ');
+  assert.doesNotMatch(side, /\b[ab]+\b/);
+  // Opened on the canvas, it is over {x, y}.
+  findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Open in a new tab')[0]._listeners.click({});
+  assert.deepEqual([...context.App.sigma].sort(), ['x', 'y']);
+  assert.ok(context.App.transitions.every(t => t.symbol === 'x' || t.symbol === 'y'));
+  // Saved, the copy in My Library is the one the reader sees.
+  context.go('babel-volume', 'dfa-4-2/121112');
+  findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Save')[0]._listeners.click({});
+  await new Promise(r => setTimeout(r, 30));
+  const kept = (await context.listMyLibrary()).find(r => r.id === 'babel:dfa-4-2/121112');
+  assert.deepEqual(JSON.parse(kept.text).sigma, ['x', 'y']);
+  // One switch shows the Library's own letters, and back.
+  findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Show a, b')[0]._listeners.click({});
+  page = textOf(host);
+  assert.match(page, /Accepts abb, /);
+  assert.match(page, /In the Library's letters a, b; you wrote x, y\./);
+  findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Show x, y')[0]._listeners.click({});
+  assert.match(textOf(host), /Accepts xyy, /);
+  // Another room keeps the canonical letters.
+  context.go('babel-volume', 'dfa-3-2/977');
+  assert.match(textOf(host), /Accepts ε, ab, abab/);
+  for (const r of await context.listMyLibrary()) await context.removeFromMyLibrary(r.id);
+});
+
+test('with the catalogue unreachable, Browse still searches AutomataStudio Babel', async () => {
+  seedTab();
+  context._resetLibraryClientForTests();
+  context.setLibraryOverride('http://127.0.0.1:8765/');
+  try {
+    context.fetch = async () => { throw new Error('connection refused'); };
+    context.renderLibraryView();
+    await context.loadLibrary({ force: true });
+    await new Promise(r => setTimeout(r, 10));
+    const host = context.document.getElementById('lib-content');
+    context.go('discover', null, { reset: true });
+    assert.match(textOf(host), /could not be reached/);
+    findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Search offline')[0]._listeners.click({});
+    assert.equal(context.libraryRoute().page, 'browse');
+    assert.match(textOf(host), /searches AutomataStudio Babel alone/);
+    const input = findAll(host, n => n.classList?.contains('lib-search'))[0];
+    input.value = '(a|b)*abb';
+    input._listeners.keydown({ key: 'Enter', preventDefault() {} });
+    const offer = findAll(host, n => n.classList?.contains('bab-offer'))[0];
+    assert.match(textOf(offer), /dfa-4-2\/121112/);
+    assert.doesNotMatch(textOf(offer), /Not in the catalogue/, 'offline, nobody knows what the catalogue holds');
+    // The canvas, too.
+    context.matchCanvas();
+    assert.ok(findAll(host, n => n.classList?.contains('bab-offer') && !n.classList.contains('is-plain')).length, 'the volume of the machine on the canvas');
+  } finally {
+    context.setLibraryOverride(null);
+    context._resetLibraryClientForTests();
+  }
+});
+
+test('a canvas that only shares a listed machine\'s language is still offered its own volume', async () => {
+  const b = await builtLibrary();
+  seedTab();
+  context.fetch = fakeFetch({ 'index.json': JSON.stringify({ ...b.raw, commit: '' }) });
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  // Even ones, with a state nothing reaches: the same language, another machine.
+  const d = evenOnes();
+  d.states.push(S('s3', 'stray', 400));
+  d.transitions.push(T('t5', 's3', 's3', '0'), T('t6', 's3', 's3', '1'));
+  context.loadData(d, true);
+  context.matchCanvas();
+  const host = context.document.getElementById('lib-content');
+  assert.ok(findAll(host, n => n.classList?.contains('lib-plate')).length, 'the entries with its language are listed');
+  const offer = findAll(host, n => n.classList?.contains('bab-offer'))[0];
+  assert.ok(offer, 'and the machine itself is offered its volume');
+  assert.match(textOf(offer), /No entry is your machine itself/);
+});
+
+test('StateMate\'s library search names the AutomataStudio Babel volume a query describes, even with no catalogue', () => {
+  seedTab();
+  context._resetLibraryClientForTests();
+  context.setLibraryOverride('http://127.0.0.1:8765/');
+  try {
+    context.fetch = async () => { throw new Error('connection refused'); };
+    const session = context.createAgentSession({}, { intent: 'answer' });
+    const [call] = context.executeAgentToolCalls([{ id: 'c1', name: 'search_library', arguments: { query: '(a|b)*abb' } }], session, { authority: 'ask' });
+    assert.equal(call.ok, true, JSON.stringify(call));
+    assert.equal(call.result.available, false);
+    assert.equal(call.result.babel.address, 'dfa-4-2/121112');
+    assert.match(call.result.babel.link, /#babel=dfa-4-2%2F121112$/);
+    const [plain] = context.executeAgentToolCalls([{ id: 'c2', name: 'search_library', arguments: { query: 'busy beaver' } }], session, { authority: 'ask' });
+    assert.equal(plain.result.babel, undefined, 'words name no machine');
+    const [backref] = context.executeAgentToolCalls([{ id: 'c3', name: 'search_library', arguments: { query: '(a*)b\\1' } }], session, { authority: 'ask' });
+    assert.match(backref.result.babel.refused, /Backreferences/, 'a backreference is refused with its reason, not given a volume');
+    assert.equal(backref.result.babel.address, undefined);
+  } finally {
+    context.setLibraryOverride(null);
+    context._resetLibraryClientForTests();
+  }
+});
+
+test('an AutomataStudio Babel volume saves to My Library as a catalogue entry does, and opens from there', async () => {
   seedTab();
   for (const r of await context.listMyLibrary()) await context.removeFromMyLibrary(r.id);
   context.renderLibraryView();
@@ -1935,7 +2079,7 @@ test('a Library of Babel volume saves to My Library as a catalogue entry does, a
   // My Library lists it beside the catalogue's machines, and opens it offline.
   context.go('mine');
   assert.match(textOf(host), /DFA № 1,537/);
-  assert.match(textOf(host), /The Library of Babel · dfa-3-2\/977/);
+  assert.match(textOf(host), /AutomataStudio Babel · dfa-3-2\/977/);
   const open = findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Open')[0];
   open._listeners.click({});
   assert.equal(context.App.machine, 'DFA');

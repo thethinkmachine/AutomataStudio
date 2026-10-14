@@ -1178,7 +1178,7 @@ export function documentOf(wing, params, body) {
 /** A document → { wing, params, body, notes, names } or { error }. */
 export function readDocument(doc) {
   let wing = wingOf(doc?.machine);
-  if (!wing) return { error: `The Library of Babel has no wing for “${doc?.machine}”.` };
+  if (!wing) return { error: `AutomataStudio Babel has no wing for “${doc?.machine}”.` };
   const moved = [];
   if (wing.type === 'TM' && doc.config?.twoWayTape) {
     wing = BY_TYPE.get('ITM');
@@ -1198,6 +1198,71 @@ export function readDocument(doc) {
     if (e instanceof Refusal) return { error: e.message };
     throw e;
   }
+}
+
+/**
+ * A volume's document with the reader's own letters put back: `names` is what
+ * `readDocument` kept ({ sigma, stackAlpha, outputAlpha }), index for index
+ * with the canonical a, b, …; Z, A, …; ⊔, 1, …. The number is the same machine
+ * either way — this is for display, the canvas and My Library, so a machine
+ * looked up over {x, y, z} comes back over {x, y, z}.
+ *
+ * The app's own symbols (ε, the blank, the bottom marker, the end markers)
+ * keep their canonical spelling, since the document's config names them. A
+ * store or output alphabet whose words are split into characters (push
+ * strings, output words) is renamed only when every name is one code point;
+ * otherwise the whole document stays canonical rather than half-renamed.
+ */
+export function withReaderNames(doc, names) {
+  if (!doc || !names) return doc;
+  const special = new Set(Object.values(SYM));
+  const mapOf = (canon, mine) => {
+    if (!Array.isArray(mine)) return null;
+    const list = (canon || []).filter(s => s !== SYM.leftMarker && s !== SYM.rightMarker);
+    if (list.length !== mine.length) return null;
+    const m = new Map();
+    list.forEach((s, i) => { if (!special.has(s) && !special.has(String(mine[i]))) m.set(s, String(mine[i])); });
+    return m.size ? m : null;
+  };
+  const tapeLike = !names.sigma && Array.isArray(names.stackAlpha);
+  const store = mapOf(doc.stackAlpha, names.stackAlpha);
+  const input = tapeLike ? store : mapOf(doc.sigma, names.sigma);
+  const output = mapOf(doc.outputAlpha, names.outputAlpha);
+  if (!input && !store && !output) return doc;
+  const oneCp = m => !m || [...m.values()].every(v => [...v].length === 1);
+  const usesWords = doc.transitions.some(t => t.push !== undefined || t.push2 !== undefined || t.below !== undefined);
+  // Moore and Mealy emit one letter a move; the other transducers emit words.
+  const outputWords = doc.machine !== 'Moore' && doc.machine !== 'Mealy';
+  if ((usesWords && !oneCp(store)) || (outputWords && !oneCp(output))) return doc;
+
+  const one = m => s => (m && typeof s === 'string' && m.has(s) ? m.get(s) : s);
+  const words = m => w => (m && typeof w === 'string' && w !== SYM.eps ? [...w].map(one(m)).join('') : w);
+  const inName = one(input), stName = one(store), outName = one(output);
+  const stWord = words(store), outWord = outputWords ? words(output) : outName;
+  const symName = tapeLike ? stName : inName;
+  const out = {
+    ...doc,
+    sigma: (doc.sigma || []).map(symName),
+    stackAlpha: (doc.stackAlpha || []).map(stName),
+    outputAlpha: (doc.outputAlpha || []).map(outName),
+    states: doc.states.map(s => (s.output !== undefined ? { ...s, output: outWord(s.output) } : s)),
+    transitions: doc.transitions.map(t => {
+      const r = { ...t };
+      if (t.symbol !== undefined) r.symbol = symName(t.symbol);
+      if (t.write !== undefined) r.write = stName(t.write);
+      if (t.pop !== undefined) r.pop = stName(t.pop);
+      if (t.pop2 !== undefined) r.pop2 = stName(t.pop2);
+      if (t.push !== undefined) r.push = stWord(t.push);
+      if (t.push2 !== undefined) r.push2 = stWord(t.push2);
+      if (t.below !== undefined) r.below = t.below === SYM.eps ? t.below : t.below.split('|').map(stWord).join('|');
+      if (t.above !== undefined) r.above = t.above === SYM.eps ? t.above : t.above.split('|').map(stWord).join('|');
+      if (t.output !== undefined) r.output = outWord(t.output);
+      if (Array.isArray(t.tapeSyms)) r.tapeSyms = t.tapeSyms.map(stName);
+      if (Array.isArray(t.tapeWrites)) r.tapeWrites = t.tapeWrites.map(stName);
+      return r;
+    })
+  };
+  return out;
 }
 
 export { Refusal };

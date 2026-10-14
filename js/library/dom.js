@@ -35,6 +35,28 @@ export function append(node, kids) {
   }
 }
 
+/**
+ * The name of a part of AutomataStudio, set the way the app sets its own name:
+ * the diamond mark (index.html's #logo-mark symbol, so it is the app's logo and
+ * not a copy of it), the wordmark, and the part's name in the serif —
+ * "AutomataStudio Library", "AutomataStudio Babel". The website's header
+ * (scripts/library/site.mjs brandHtml) is the same lockup.
+ */
+export function brandLockup(part) {
+  const mark = h('span', { class: 'lib-brand-mark', 'aria-hidden': 'true' });
+  mark.innerHTML = '<svg><use href="#logo-mark"/></svg>';
+  return h('span', { class: 'lib-brand' }, mark,
+    h('span', { class: 'lib-brand-logo' }, 'Automata', h('em', { text: 'Studio' })),
+    h('span', { class: 'lib-brand-sub', text: part }));
+}
+
+/** The header's Back: a chevron, the same on every Library page. */
+export function backButton(onClick) {
+  const b = h('button', { type: 'button', class: 'lib-back', title: 'Back', 'aria-label': 'Back', on: { click: onClick } });
+  b.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  return b;
+}
+
 export function button(label, onClick, cls = 'btn-g', extra = {}) {
   return h('button', { type: 'button', class: cls, on: { click: onClick }, ...extra }, label);
 }
