@@ -1,0 +1,1524 @@
+// ══════════════════════════════════════════════════════════════════
+//  THE LIBRARY OF BABEL — THE PAGES
+// ══════════════════════════════════════════════════════════════════
+// A wing of the Library view (library-ui.js registers these pages and puts
+// them in its rail), holding every machine that has ever been conceived or
+// ever will be. Four pages, one place each:
+//
+//   babel          the Entrance: a title page with one field that reads as
+//                  you type, example plates under it, and the galleries — a
+//                  row of hexagons per family, one per wing
+//   babel-wings    a wing: its rooms as a lattice of dots beside a plate of
+//                  the room under the pointer, and the rooms in the order
+//                  the wing numbers them
+//   babel-room     a room: its census as one bar, a map with one cell per
+//                  volume and a reading pane beside it — or plates, with the
+//                  map as a minimap
+//   babel-volume   a volume: its plate between its neighbours, its facts in
+//                  the margin, and its number spelled out
+//
+// Every page opens with the same location bar, and the bar is the address:
+// dfa-3-2/977, each part a step back up, named underneath. A volume's bar also
+// shows where it sits in its room and steps along the shelf (← → too). Words
+// are kept to labels and short facts; what a thing means is said in its
+// tooltip, not in a paragraph beside it.
+//
+// Nothing on a page is written by anyone: every fact is computed from the
+// volume's number.
+
+import { App, MachineCategories, getMachineConfig } from '../core/state.js';
+import { showStatus } from '../core/utils.js';
+import { applyDocument } from '../io/persistence.js';
+import { exportCopyText } from '../io/export-core.js';
+import { setView } from '../ui/view.js';
+import { writeStandardTM, bbchallengeUrl } from '../interop/standard-tm.js';
+import { h, button, svgFigure } from '../library/dom.js';
+import { drawSketch, sketchFromTarget, drawLanguage, languageRows } from '../library/sketch.js';
+import { decideRaw, liveDiagram, targetFromDoc, traceWord } from '../library/analyze.js';
+import { machineIdOf } from '../library/hash.js';
+import { cachedLibrary } from '../library/client.js';
+import { webAppLink } from '../library/config.js';
+import { go, isInMyLibraryNow, libraryBack, libraryCanGoBack, libraryRoute, playRun, toggleSavedVolume, verdictChip } from '../library/library-ui.js';
+import { formatAddress, groupDigits, numberText, parseAddress, sayCount, showNumber } from './address.js';
+import { canonicalOf } from './canon.js';
+import { cellClassesOf, classifyBody, decideText, withVolumeLoaded } from './census.js';
+import { asSketchDfa, dfaOf, firstWords, languageClass, minimiseDfa, weakViolation } from './facts.js';
+import { endlessSpelling, finiteTiles, neighbours, nudge, conventionsOf } from './spell.js';
+import { askBabel } from './babel-client.js';
+import { findVolume } from './find.js';
+import { openVolume, randomVolume, roomId, roomShape, roomTotal, roomsOfWeight, seededBelow, wingCountUpTo, wingNumberOf } from './volumes.js';
+import { WINGS, letterName, roomProblem, wingByKey, wingIsFinite, wingOf } from './wings.js';
+
+// ── State ─────────────────────────────────────────────────────────
+
+const B = {
+  wing: 'dfa',            // the wing a bare number on the Entrance counts in
+  typed: '',              // what the Entrance's field holds
+  names: new Map(),       // address → the reader's own letter names, from the Finder
+  notes: new Map(),       // address → how the Finder read the machine
+  view: 'map',            // a room: 'map' or 'plates'
+  from: new Map(),        // room id → the first volume on the plates page
+  zoom: new Map(),        // room id → stack of zoomed blocks
+  lit: new Map(),         // room id → the census class picked on its bar
+  canonicalOnly: false,
+  wingRoom: new Map(),    // wing key → params last chosen on a wing's page
+  verdicts: new Map(),    // address|budget → a TM's halting verdict
+  census: new Map(),      // room id:lo:hi → the classes of a map's cells, as far as read
+  active: null,           // the census the page on screen reads; any other stops
+  current: null           // the volume on screen: { wing, params, volume, last }
+};
+
+export function resetBabelUiForTests() {
+  B.wing = 'dfa'; B.typed = ''; B.names.clear(); B.notes.clear(); B.view = 'map';
+  B.from.clear(); B.zoom.clear(); B.lit.clear(); B.canonicalOnly = false; B.wingRoom.clear(); B.verdicts.clear();
+  B.census.clear(); B.active = null; B.current = null;
+}
+
+/** Which rail item a Babel page lights up. */
+export const BABEL_NAV_OF = { 'babel-room': 'babel-wings', 'babel-volume': 'babel-wings' };
+
+// ── Words and marks ───────────────────────────────────────────────
+
+const SINGULAR = { states: 'state', letters: 'letter', 'stack symbols': 'stack symbol', 'output letters': 'output letter', 'tape symbols': 'tape symbol', tapes: 'tape' };
+const SHORT = { states: 'states', letters: 'letters', 'stack symbols': 'stack', 'output letters': 'outputs', 'tape symbols': 'symbols', tapes: 'tapes' };
+
+/** [3, 2] in the DFA wing → "3 states, 2 letters". */
+export function paramWords(wing, params) {
+  return wing.params.map((p, i) => `${params[i]} ${params[i] === 1 ? SINGULAR[p.id] || p.id : p.id}`).join(', ');
+}
+
+/** [3, 2] → "3·2", a room's short name. */
+function roomDots(params) {
+  return params.join('·');
+}
+
+function fullName(wing) {
+  return getMachineConfig(wing.type)?.fullName || wing.type;
+}
+
+function familyOf(wing) {
+  return getMachineConfig(wing.type)?.category || 'special';
+}
+
+const ICONS = {
+  link: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5l3-3M5 7.5 3.6 8.9a2.5 2.5 0 0 0 3.5 3.5L8.5 11M11 8.5l1.4-1.4a2.5 2.5 0 0 0-3.5-3.5L7.5 5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  back: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  hex: '<svg viewBox="0 0 72 82" aria-hidden="true"><polygon points="36,1.5 70.5,21.25 70.5,60.75 36,80.5 1.5,60.75 1.5,21.25"/></svg>'
+};
+
+/** A small inline icon: a fixed SVG string, never anything a reader wrote. */
+function icon(name, cls = '') {
+  const s = h('span', { class: `bab-ico is-${name}${cls ? ` ${cls}` : ''}`, 'aria-hidden': 'true' });
+  s.innerHTML = ICONS[name];
+  return s;
+}
+
+const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+/** 5 digits → "10⁴": the power of ten a count reaches. */
+function magnitude(n) {
+  const d = BigInt(n).toString().length - 1;
+  return `10${String(d).split('').map(c => SUP[Number(c)]).join('')}`;
+}
+
+/** A count short enough for a small label: in full up to nine digits, else 1.2 × 10^12. */
+function shortCount(n) {
+  return sayCount(n);
+}
+
+function volumeAddress(wing, params, volume) {
+  return formatAddress({ key: wing.key, params, volume });
+}
+
+/** A room id → { wing, params }, or null. */
+function parseRoom(id) {
+  const a = parseAddress(id || '');
+  if (!a || !a.params) return null;
+  const wing = wingByKey(a.key);
+  if (!wing || roomProblem(wing, a.params)) return null;
+  return { wing, params: a.params };
+}
+
+/**
+ * Fade a row of things in once, as they scroll into view. Without an
+ * IntersectionObserver (a test, an old browser) they are simply there.
+ */
+function reveal(nodes) {
+  const IO = globalThis.IntersectionObserver;
+  nodes.forEach(n => n.classList.add('bab-reveal'));
+  if (typeof IO !== 'function') { nodes.forEach(n => n.classList.add('is-in')); return; }
+  const io = new IO(entries => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      e.target.classList.add('is-in');
+      io.unobserve(e.target);
+    }
+  }, { rootMargin: '0px 0px -32px 0px' });
+  nodes.forEach(n => io.observe(n));
+}
+
+// ── Where you are ─────────────────────────────────────────────────
+
+/**
+ * The location bar every Babel page opens with. It is the address itself —
+ * dfa-3-2/977 — with each part a step back up and its name underneath, so
+ * walking the Library teaches the one thing a reader needs to come back. On a
+ * volume, its tail shows where the volume sits in its room and steps along
+ * the shelf.
+ */
+function locationBar({ wing = null, params = null, volume = null, tail = null } = {}) {
+  const bar = h('nav', { class: 'bab-loc', 'aria-label': 'Where you are in the Library of Babel', data: wing ? { family: familyOf(wing) } : {} });
+  if (libraryCanGoBack()) bar.append(h('button', { type: 'button', class: 'bab-loc-back', title: 'Back', 'aria-label': 'Back', on: { click: () => libraryBack() } }, icon('back')));
+  const crumb = h('div', { class: 'bab-crumb' });
+  const parts = [{ word: 'Babel', cap: null, title: 'The Entrance', root: true, go: () => go('babel') }];
+  if (wing) parts.push({ word: wing.key, cap: 'wing', title: fullName(wing), wing: true, go: () => go('babel-wings', wing.key) });
+  if (wing && params) parts.push({ sep: '-' }, { word: params.join('-'), cap: 'room', title: paramWords(wing, params), go: () => go('babel-room', roomId(wing, params)) });
+  if (wing && params && volume !== null) parts.push({ sep: '/' }, { word: numberText(volume), cap: 'volume', title: `Volume ${groupDigits(volume)}` });
+  const last = parts.length - 1;
+  parts.forEach((p, i) => {
+    if (p.sep) { crumb.append(h('span', { class: 'bab-crumb-sep', 'aria-hidden': 'true', text: p.sep })); return; }
+    const cls = `bab-crumb-seg${p.root ? ' is-root' : ''}${p.wing ? ' is-wing' : ''}${i === last ? ' is-here' : ''}`;
+    const inner = [h('span', { class: 'bab-crumb-word' }, p.wing ? h('i', { class: 'lib-dot bab-crumb-dot', 'aria-hidden': 'true' }) : null, p.word), p.cap ? h('span', { class: 'bab-crumb-cap', text: p.cap }) : null];
+    crumb.append(i === last
+      ? h('span', { class: cls, title: p.title, 'aria-current': 'page' }, inner)
+      : h('button', { type: 'button', class: cls, title: p.title, on: { click: p.go } }, inner));
+  });
+  bar.append(crumb);
+  if (tail) bar.append(h('div', { class: 'bab-loc-tail' }, tail));
+  return bar;
+}
+
+/**
+ * Where a volume sits in its room: "977 of 5,832" over a hairline with a mark,
+ * and a step either side. An endless room has no end to measure against, so
+ * it says the volume's size instead.
+ */
+function positionTail(wing, params, volume) {
+  const shape = roomShape(wing, params);
+  let at, say, title;
+  if (shape.finite) {
+    at = shape.total > 1n ? Number((volume * 10000n) / (shape.total - 1n)) / 10000 : 0;
+    say = `${showNumber(volume).text} of ${shortCount(shape.total)}`;
+    title = `Volume ${groupDigits(volume)} of ${groupDigits(shape.total)} in ${roomId(wing, params)}`;
+  } else {
+    const s = openVolume({ wing, params, volume }).size;
+    at = Math.min(1, s / 12);
+    say = `size ${s}`;
+    title = `Size ${s} in an endless room: its volumes are ordered by size`;
+  }
+  const last = shape.finite ? shape.total - 1n : null;
+  const step = d => {
+    const v = volume + BigInt(d);
+    if (v < 0n || (last !== null && v > last)) return;
+    go('babel-volume', volumeAddress(wing, params, v), { push: false });
+  };
+  return [
+    h('button', { type: 'button', class: 'bab-step', title: 'Previous volume (←)', 'aria-label': 'Previous volume', disabled: volume === 0n ? '' : null, on: { click: () => step(-1) } }, '‹'),
+    h('div', { class: 'bab-pos', title },
+      h('span', { class: 'bab-pos-say', text: say }),
+      h('span', { class: 'bab-pos-track' }, h('i', { class: 'bab-pos-mark', style: `left: ${(at * 100).toFixed(2)}%` }))),
+    h('button', { type: 'button', class: 'bab-step', title: 'Next volume (→)', 'aria-label': 'Next volume', disabled: last !== null && volume >= last ? '' : null, on: { click: () => step(1) } }, '›')
+  ];
+}
+
+// ← and → step along the shelf on a volume's page, unless the reader is typing.
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('keydown', ev => {
+    if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+    if (App.view !== 'library' || libraryRoute().page !== 'babel-volume' || !B.current) return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.defaultPrevented) return;
+    const t = ev.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    const { wing, params, volume, last } = B.current;
+    const v = volume + (ev.key === 'ArrowLeft' ? -1n : 1n);
+    if (v < 0n || (last !== null && v > last)) return;
+    ev.preventDefault();
+    go('babel-volume', volumeAddress(wing, params, v), { push: false });
+  });
+}
+
+function errorPage(title, body) {
+  return h('div', { class: 'lib-page bab-page' },
+    locationBar(),
+    h('div', { class: 'lib-empty lib-empty-state' }, h('strong', { text: title }), body ? h('span', { class: 'lib-muted', text: body }) : null,
+      h('div', { class: 'lib-actions' }, button('To the Entrance', () => go('babel'), 'btn-g'))));
+}
+
+// ── Figures ───────────────────────────────────────────────────────
+
+/** A volume's diagram, small: the plate's figure. */
+function plateFigure(doc, { w = 200, h: ht = 120 } = {}) {
+  try {
+    const target = targetFromDoc(doc);
+    if (target.states.length > 60) return h('div', { class: 'lib-fig bab-fig-big' }, h('span', { text: `${target.states.length} states` }));
+    return svgFigure(drawSketch(sketchFromTarget(target), { w, h: ht }), 'bab-plate-fig');
+  } catch {
+    return h('div', { class: 'lib-fig' });
+  }
+}
+
+/** What a volume says, in a few words, for a plate or a readout. */
+function sayVolume(wing, params, body) {
+  if (wing.kind === 'fa') {
+    const t = dfaOf(wing.type, params, body);
+    if (!t) return { cls: 'x', text: 'too large to determinise here' };
+    const c = languageClass(t);
+    if (c === 'e') return { cls: 'e', text: '∅' };
+    if (c === 'u') return { cls: 'u', text: 'Σ*' };
+    const words = firstWords(t, { count: 3 }).map(w => (w.length ? w.map(letterName).join('') : 'ε'));
+    return { cls: c === 'c' ? 'f' : c, text: words.join(', ') + (c === 'f' && words.length < 3 ? '' : ', …') };
+  }
+  const cls = classifyBody(wing, params, body);
+  const lab = cellClassesOf(wing).find(c => c.key === cls);
+  return { cls, text: lab?.label || '' };
+}
+
+// ── The Entrance ──────────────────────────────────────────────────
+
+const EXAMPLES = [
+  { text: '1537', say: 'a number', wing: 'dfa' },
+  { text: '(a|b)*abb', say: 'a regular expression' },
+  { text: 'nba-2-2/300', say: 'an address' },
+  { text: '1RB1LB_1LA0LC_1RZ1LD_1RD0RA', label: 'BB(4)', say: 'a machine code' }
+];
+
+function pageEntrance() {
+  const page = h('div', { class: 'lib-page bab-page bab-entrance' });
+  page.append(locationBar());
+
+  // The title page: the statement, one field, and the volume it names.
+  const select = h('select', { class: 'bab-wing-select', 'aria-label': 'The wing a number counts in' });
+  for (const w of WINGS) select.append(h('option', { value: w.key, text: w.type, selected: w.key === B.wing ? '' : null }));
+  const input = h('input', {
+    class: 'bab-typewriter', type: 'text', spellcheck: 'false', autocomplete: 'off', value: B.typed,
+    placeholder: 'dfa-3-2/977', title: 'A number, an address, a regular expression, a machine code, or “canvas” for the machine on your canvas',
+    'aria-label': 'A number, an address, a regular expression, a machine code, or “canvas”'
+  });
+  const preview = h('div', { class: 'bab-preview', 'aria-live': 'polite' });
+  const update = () => {
+    B.typed = input.value;
+    paintPreview(preview, input.value || input.placeholder);
+  };
+  const open = () => followFound(findVolume(input.value || input.placeholder, { wing: B.wing }));
+  select.addEventListener('change', () => { B.wing = select.value; update(); });
+  input.addEventListener('input', update);
+  input.addEventListener('keydown', ev => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    open();
+  });
+  page.append(h('section', { class: 'bab-title' },
+    h('h2', { class: 'lib-display bab-statement' }, 'Every machine that has ever been conceived, ', h('em', { text: 'or ever will be.' })),
+    h('div', { class: 'bab-field' },
+      h('div', { class: 'bab-field-line' }, input, button('Open', open, 'lib-textbtn bab-field-open', { title: 'Open (Enter)' })),
+      h('div', { class: 'bab-field-under' },
+        h('span', { text: 'a number, an address, a regular expression or a machine code' }),
+        h('span', { class: 'bab-wing-pick', title: 'A bare number counts in this wing' }, 'numbers count in ', select),
+        button('a random volume ↻', () => takeRandom(), 'lib-textbtn bab-random', { title: 'A random volume of the wing numbers count in' }))),
+    preview));
+  update();
+
+  // Under the field: what it accepts, by example — each one a plate that opens.
+  const plates = EXAMPLES.map(ex => examplePlate(ex)).filter(Boolean);
+  plates.push(h('button', { type: 'button', class: 'bab-example is-random', title: 'A random volume of the wing numbers count in', on: { click: () => takeRandom() } },
+    h('div', { class: 'lib-fig bab-example-fig' }, h('span', { class: 'bab-random-glyph', text: '↻' })),
+    h('span', { class: 'bab-example-cap' }, h('span', { class: 'bab-example-k', text: 'random' }), h('span', { class: 'bab-example-say', text: 'any volume' }))));
+  page.append(h('section', { class: 'bab-examples', 'aria-label': 'Examples' },
+    h('span', { class: 'bab-kicker', text: 'Or open one of these' }),
+    h('div', { class: 'bab-example-row' }, plates)));
+  reveal(plates);
+
+  // The galleries: a row of hexagons per family, a hexagon per wing.
+  const groups = wingGroups();
+  const rows = groups.map((g, gi) => h('div', { class: `bab-gallery${gi % 2 ? ' is-offset' : ''}`, data: { family: g.family } },
+    h('div', { class: 'bab-gallery-name' }, h('i', { class: 'lib-dot' }), h('span', { text: g.label })),
+    h('div', { class: 'bab-hexes' }, g.wings.map(w => hexFor(w, g.family)))));
+  page.append(h('section', { class: 'bab-galleries', 'aria-label': `${WINGS.length} wings` },
+    h('div', { class: 'lib-sechead' },
+      h('h3', { class: 'lib-sechead-title', text: `${WINGS.length} wings` }),
+      h('span', { class: 'bab-gallery-key', title: 'Each hexagon is a wing. The power of ten is how many machines it holds up to size 3; ∞ marks a wing whose rooms are endless — its machines can keep growing.' },
+        h('span', { class: 'lib-mono', text: '10ⁿ' }), ' machines up to size 3 · ', h('b', { text: '∞' }), ' endless rooms')),
+    rows));
+  return page;
+}
+
+/** An example under the field: its plate, what it is, and what kind of thing it is. */
+function examplePlate(ex) {
+  const found = findVolume(ex.text, { wing: ex.wing || B.wing });
+  if (!found || found.kind !== 'volume') return null;
+  let v;
+  try { v = openVolume({ key: found.key, params: found.params, volume: found.volume }); } catch { return null; }
+  const label = ex.label || ex.text;
+  return h('button', { type: 'button', class: 'bab-example', data: { family: familyOf(v.wing) }, title: `${ex.text} — ${v.wing.type} ${v.address}`, on: { click: () => followFound(found) } },
+    plateFigure(v.doc, { w: 220, h: 120 }),
+    h('span', { class: 'bab-example-cap' }, h('span', { class: 'bab-example-k', text: label }), h('span', { class: 'bab-example-say', text: ex.say })));
+}
+
+const SCALE = new Map();
+/** How many machines a wing holds up to size 3 — the number its hexagon carries. */
+function wingScale(wing) {
+  if (!SCALE.has(wing.key)) {
+    let n = null;
+    try { n = wingCountUpTo(wing, 3); } catch { /* past the search */ }
+    SCALE.set(wing.key, n);
+  }
+  return SCALE.get(wing.key);
+}
+
+function hexFor(w, family) {
+  const n = wingScale(w);
+  const endless = !wingIsFinite(w);
+  return h('button', {
+    type: 'button', class: 'bab-hex bab-wing-link', data: { family },
+    title: `${fullName(w)}${n !== null ? ` · ${groupDigits(n)} machines up to size 3` : ''}${endless ? ' · endless rooms' : ''}`,
+    on: { click: () => go('babel-wings', w.key) }
+  },
+  icon('hex', 'bab-hex-shape'),
+  h('span', { class: 'bab-hex-name', text: w.type }),
+  n !== null ? h('span', { class: 'bab-hex-mag', text: magnitude(n) }) : null,
+  endless ? h('span', { class: 'bab-hex-inf', text: '∞' }) : null);
+}
+
+function wingGroups() {
+  const groups = [];
+  const seen = new Set();
+  for (const cat of MachineCategories || []) {
+    const wings = (cat.machines || []).map(t => wingOf(t)).filter(w => w && !seen.has(w.key));
+    wings.forEach(w => seen.add(w.key));
+    if (wings.length) groups.push({ label: cat.label, family: cat.id, wings });
+  }
+  const rest = WINGS.filter(w => !seen.has(w.key));
+  if (rest.length) groups.push({ label: 'Others', family: 'special', wings: rest });
+  return groups;
+}
+
+function paintPreview(box, text) {
+  box.innerHTML = '';
+  const found = findVolume(text, { wing: B.wing });
+  if (!found) return;
+  if (found.kind === 'error') { box.append(h('p', { class: 'bab-preview-err', text: found.error })); return; }
+  if (found.kind !== 'volume') {
+    const wing = wingByKey(found.key);
+    box.append(h('p', { class: 'bab-preview-err', text: found.kind === 'room' ? `Room ${roomId(wing, found.params)} — Enter to walk in.` : `The ${wing.type} wing — Enter.` }));
+    return;
+  }
+  let v;
+  try { v = openVolume({ key: found.key, params: found.params, volume: found.volume }); }
+  catch (e) { box.append(h('p', { class: 'bab-preview-err', text: e.message })); return; }
+  const said = sayVolume(v.wing, v.params, v.body);
+  box.append(
+    h('button', { type: 'button', class: 'bab-preview-card', data: { family: familyOf(v.wing) }, title: `Open ${v.address}`, on: { click: () => followFound(found) } },
+      plateFigure(v.doc, { w: 300, h: 150 }),
+      h('span', { class: 'bab-preview-cap' },
+        h('i', { class: 'lib-dot' }),
+        h('span', { text: `${v.wing.type} · ${paramWords(v.wing, v.params)} · № ${showNumber(v.volume).text}` })),
+      h('span', { class: 'bab-preview-says', text: found.regex ? `accepts ${found.regex}` : said.text })));
+}
+
+function followFound(found) {
+  if (!found) return;
+  if (found.kind === 'error') { showStatus(found.error); return; }
+  if (found.kind === 'wing') { go('babel-wings', found.key); return; }
+  if (found.kind === 'room') { go('babel-room', roomId(wingByKey(found.key), found.params)); return; }
+  if (found.names) B.names.set(found.address, found.names);
+  if (found.notes?.length) B.notes.set(found.address, found.notes);
+  go('babel-volume', found.address);
+}
+
+function takeRandom() {
+  const wing = wingByKey(B.wing) || WINGS[0];
+  // A room near the start of the wing — a weight of 1 to 3 above the smallest —
+  // then a uniform volume in it (of a small size, in an endless room).
+  const weight = 1 + Math.floor(Math.random() * 3);
+  const rooms = roomsOfWeight(wing, weight);
+  const params = rooms[Math.floor(Math.random() * rooms.length)];
+  const finite = roomShape(wing, params).finite;
+  const size = finite ? null : Math.floor(Math.random() * 6);
+  const volume = randomVolume(wing, params, { size }) ?? 0n;
+  go('babel-volume', volumeAddress(wing, params, volume));
+}
+
+// ── A wing ────────────────────────────────────────────────────────
+
+const LATTICE_ROWS = 7, LATTICE_COLS = 5, FLOORS = 5, FLOOR_ROOMS = 8;
+
+/** A room's size, for its dot: digits of its count (at size 4 in an endless room). */
+function roomDigits(wing, params) {
+  const total = roomTotal(wing, params);
+  const n = total === null ? roomShape(wing, params).count(4) : total;
+  return { n, digits: n.toString().length, endless: total === null };
+}
+
+/** The wing numbers a finite room holds, or null. */
+function roomRange(wing, params) {
+  const total = roomTotal(wing, params);
+  if (total === null || total === 0n) return null;
+  try {
+    const lo = wingNumberOf(wing, params, 0n);
+    return { lo, hi: lo + total - 1n };
+  } catch { return null; }
+}
+
+function pageWings(key) {
+  const wing = wingByKey(key || B.wing) || WINGS[0];
+  const fam = familyOf(wing);
+  const finite = wingIsFinite(wing);
+  const page = h('div', { class: 'lib-page bab-page bab-wings', data: { family: fam } });
+  page.append(locationBar({ wing }));
+  const siblings = wingGroups().find(g => g.wings.includes(wing))?.wings || [wing];
+  page.append(h('div', { class: 'bab-wing-head' },
+    h('div', { class: 'bab-wing-name' },
+      h('h2', { class: 'lib-display bab-wing-title', text: wing.type }),
+      h('span', { class: 'bab-wing-full', text: fullName(wing) }),
+      h('span', { class: 'bab-wing-kind', title: finite ? 'Every room holds a fixed number of volumes' : 'Its machines can keep growing, so each room is counted by size' }, finite ? 'finite rooms' : '∞ endless rooms')),
+    h('nav', { class: 'bab-siblings', 'aria-label': 'Wings in this family' },
+      siblings.map(w => button(w.type, () => go('babel-wings', w.key, { push: false }), `bab-sibling${w === wing ? ' is-on' : ''}`, { title: fullName(w), 'aria-current': w === wing ? 'page' : null })))));
+
+  // The rooms: a lattice over the first two sizes (the rest fixed, and changeable),
+  // and a pane with a plate of the room under the pointer.
+  const p0 = wing.params[0], p1 = wing.params[1];
+  const chosen = B.wingRoom.get(wing.key) || wing.params.map((p, i) => p.min + (i === 0 ? 2 : i === 1 ? 1 : 0));
+  const fixed = chosen.slice(2);
+  const paramsAt = (r, c) => [p0.min + r, (p1?.min ?? 0) + c, ...fixed].slice(0, wing.params.length);
+  const cells = [];
+  let maxDigits = 1;
+  for (let r = 0; r < LATTICE_ROWS; r++) for (let c = 0; c < LATTICE_COLS; c++) {
+    const params = paramsAt(r, c);
+    const d = roomDigits(wing, params);
+    maxDigits = Math.max(maxDigits, d.digits);
+    cells.push({ r, c, params, ...d });
+  }
+  const pane = h('aside', { class: 'bab-room-pane', 'aria-live': 'polite' });
+  const show = params => paintRoomPane(pane, wing, params);
+  const lattice = h('div', { class: 'bab-lattice', style: `--cols:${LATTICE_COLS + 1}`, role: 'grid', 'aria-label': `Rooms of the ${wing.type} wing` });
+  lattice.append(h('span', { class: 'bab-lat-corner', title: `${p0.id} down, ${p1 ? p1.id : ''} across` }, h('span', { text: `${p1 ? SHORT[p1.id] || p1.id : ''} →` }), h('span', { text: `${SHORT[p0.id] || p0.id} ↓` })));
+  for (let c = 0; c < LATTICE_COLS; c++) lattice.append(h('span', { class: 'bab-lat-head', text: String((p1?.min ?? 0) + c) }));
+  lattice.append(h('span', { class: 'bab-lat-head is-more', 'aria-hidden': 'true', text: '…' }));
+  const here = chosen.slice(0, 2).join('|');
+  for (let r = 0; r < LATTICE_ROWS; r++) {
+    lattice.append(h('span', { class: 'bab-lat-head is-row', text: String(p0.min + r) }));
+    for (let c = 0; c < LATTICE_COLS; c++) {
+      const cell = cells[r * LATTICE_COLS + c];
+      const size = (8 + 30 * Math.sqrt(cell.digits / maxDigits)).toFixed(1);
+      const btn = h('button', {
+        type: 'button', class: `bab-lat-cell${cell.params.slice(0, 2).join('|') === here ? ' is-here' : ''}`,
+        title: `${paramWords(wing, cell.params)} · ${groupDigits(cell.n)} volumes${cell.endless ? ' at size 4' : ''}`,
+        'aria-label': `${paramWords(wing, cell.params)}: ${groupDigits(cell.n)} volumes`,
+        on: {
+          click: () => { B.wingRoom.set(wing.key, cell.params); go('babel-room', roomId(wing, cell.params)); },
+          mouseenter: () => show(cell.params), focus: () => show(cell.params)
+        }
+      }, h('i', { class: 'bab-lat-dot', style: `--d:${size}px` }));
+      lattice.append(btn);
+    }
+    lattice.append(h('span', { class: 'bab-lat-ghost', 'aria-hidden': 'true' }));
+  }
+  lattice.append(h('span', { class: 'bab-lat-head is-row', 'aria-hidden': 'true', text: '…' }));
+  for (let c = 0; c < LATTICE_COLS; c++) lattice.append(h('span', { class: 'bab-lat-ghost', 'aria-hidden': 'true' }));
+  lattice.append(h('span', { class: 'bab-lat-more', 'aria-hidden': 'true', text: 'and on' }));
+  lattice.addEventListener('mouseleave', () => show(chosen));
+
+  const inputs = wing.params.map((p, i) => h('input', { type: 'number', min: String(p.min), value: String(chosen[i] ?? p.min), class: 'bab-param', 'aria-label': p.id, title: p.id }));
+  const openAny = () => {
+    const params = inputs.map(x => Math.floor(Number(x.value)));
+    const problem = roomProblem(wing, params);
+    if (problem) { showStatus(problem); return; }
+    B.wingRoom.set(wing.key, params);
+    go('babel-room', roomId(wing, params));
+  };
+  inputs.forEach(x => x.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); openAny(); } }));
+  page.append(h('section', { class: 'bab-rooms' },
+    h('div', { class: 'bab-rooms-main' },
+      lattice,
+      h('div', { class: 'bab-open-room', title: 'The lattice stops; the wing does not. Any sizes open a room.' },
+        h('span', { class: 'bab-open-label', text: 'Any room' }),
+        wing.params.map((p, i) => h('label', { class: 'bab-param-label' }, inputs[i], h('span', { text: p.id }))),
+        button('Walk in →', openAny, 'lib-textbtn bab-walk')),
+      fixed.length ? h('span', { class: 'bab-lat-fixed', text: `with ${wing.params.slice(2).map((p, i) => `${fixed[i]} ${p.id}`).join(', ')}` }) : null),
+    pane));
+  show(chosen);
+
+  page.append(floorsSection(wing, chosen));
+  if (!finite) page.append(endlessBars(wing, chosen.length === wing.params.length ? chosen : wing.params.map(p => p.min)));
+  return page;
+}
+
+/** The pane beside the lattice: a plate from the room, its name and its count. */
+function paintRoomPane(pane, wing, params) {
+  pane.innerHTML = '';
+  const id = roomId(wing, params);
+  const shape = roomShape(wing, params);
+  let sample = null;
+  try {
+    const volume = randomVolume(wing, params, { size: shape.finite ? null : 2, rand: seededBelow(id) });
+    if (volume !== null) sample = openVolume({ wing, params, volume });
+  } catch { /* past the room */ }
+  const range = roomRange(wing, params);
+  pane.append(
+    sample ? plateFigure(sample.doc, { w: 300, h: 150 }) : h('div', { class: 'lib-fig' }),
+    sample ? h('span', { class: 'bab-pane-sample', text: `a volume from it: № ${showNumber(sample.volume).text}` }) : null,
+    h('h3', { class: 'bab-pane-title', text: paramWords(wing, params) }),
+    h('span', { class: 'bab-pane-count' }, shape.finite
+      ? `${groupDigits(shape.total)} volumes${range ? ` · № ${shortCount(range.lo)} to ${shortCount(range.hi)}` : ''}`
+      : `∞ · ${[0, 1, 2, 3].map(s => shortCount(shape.count(s))).join(', ')}, … by size`),
+    button('Walk in →', () => { B.wingRoom.set(wing.key, params); go('babel-room', id); }, 'lib-textbtn bab-walk is-strong'));
+}
+
+/**
+ * The rooms in the order the wing numbers its machines: by size — how far a
+ * room is above the smallest — then room by room. A finite room's machines
+ * hold a run of wing numbers, which is how DFA № 1,537 comes to be volume 977
+ * of room 3·2.
+ */
+function floorsSection(wing, chosen) {
+  const finite = wingIsFinite(wing);
+  const sec = h('section', { class: 'bab-floors' },
+    h('div', { class: 'lib-sechead', title: 'A machine’s wing number runs left to right, size by size: every machine of a smaller size comes first.' },
+      h('h3', { class: 'lib-sechead-title', text: 'In the wing’s order' }),
+      h('span', { class: 'bab-floors-key', text: finite ? 'wing numbers run left to right, size by size' : 'rooms by size; endless rooms count by size within' })));
+  const here = chosen.join('|');
+  for (let T = 0; T < FLOORS; T++) {
+    const rooms = roomsOfWeight(wing, T);
+    if (rooms.length > FLOOR_ROOMS) break;
+    const row = h('div', { class: 'bab-floor-rooms' });
+    for (const params of rooms) {
+      const d = roomDigits(wing, params);
+      const range = finite ? roomRange(wing, params) : null;
+      row.append(h('button', {
+        type: 'button', class: `bab-floor-room${params.join('|') === here ? ' is-here' : ''}`, style: `--dg:${Math.min(d.digits, 16)}`,
+        title: `${paramWords(wing, params)} · ${groupDigits(d.n)} volumes${d.endless ? ' at size 4' : ''}`,
+        on: { click: () => { B.wingRoom.set(wing.key, params); go('babel-room', roomId(wing, params)); } }
+      },
+      h('span', { class: 'bab-floor-name' }, h('b', { text: roomDots(params) }), ` · ${d.endless ? '∞' : shortCount(d.n)}`),
+      range ? h('span', { class: 'bab-floor-range', text: `№ ${shortCount(range.lo)}–${shortCount(range.hi)}` }) : null));
+    }
+    sec.append(h('div', { class: 'bab-floor' }, h('span', { class: 'bab-floor-k', text: `size ${T}` }), row));
+  }
+  return sec;
+}
+
+/** An endless room's counts by size, as bars on a log scale. */
+function endlessBars(wing, params) {
+  const shape = roomShape(wing, params);
+  const counts = Array.from({ length: 10 }, (_, s) => shape.count(s));
+  const lg = c => (c === 0n ? 0 : c.toString().length - 1 + Math.log10(Number(c.toString().slice(0, 6)) / 10 ** (Math.min(6, c.toString().length) - 1)));
+  const peak = Math.max(...counts.map(lg));
+  return h('section', { class: 'bab-endless' },
+    h('div', { class: 'lib-sechead' },
+      h('h3', { class: 'lib-sechead-title', text: `Room ${roomDots(params)}, counted by size` }),
+      button('Walk in →', () => go('babel-room', roomId(wing, params)), 'lib-textbtn bab-walk')),
+    h('div', { class: 'bab-bars' }, counts.map((c, s) => h('div', { class: 'bab-bar', style: `--hgt:${Math.max(0.03, (lg(c) + 1) / (peak + 1)).toFixed(3)}`, title: `size ${s}: ${groupDigits(c)} volumes` },
+      h('span', { class: 'bab-bar-n', text: sayCount(c) }), h('i'), h('span', { class: 'bab-bar-s', text: String(s) })))));
+}
+
+// ── A room ────────────────────────────────────────────────────────
+
+const MAX_CELLS = 16384;
+const PLATES = 24;
+
+function pageRoom(id) {
+  const r = parseRoom(id);
+  if (!r) return errorPage('There is no such room', `“${id}” is not a room of the Library of Babel.`);
+  const { wing, params } = r;
+  const shape = roomShape(wing, params);
+  const page = h('div', { class: 'lib-page bab-page bab-room', data: { family: familyOf(wing) } });
+  page.append(locationBar({ wing, params }));
+  const range = shape.finite ? roomRange(wing, params) : null;
+  const views = h('nav', { class: 'bab-views', 'aria-label': 'View' },
+    ['map', 'plates'].map(v => button(v === 'map' ? 'Map' : 'Plates', () => { B.view = v; go('babel-room', id, { push: false }); },
+      `bab-toggle${B.view === v ? ' is-on' : ''}`, { 'aria-current': B.view === v ? 'true' : null })));
+  page.append(h('div', { class: 'bab-room-head' },
+    h('div', { class: 'bab-room-name' },
+      h('h2', { class: 'lib-display bab-room-title', text: paramWords(wing, params) }),
+      h('span', { class: 'bab-room-count', title: range ? `${wing.type} № ${groupDigits(range.lo)} to № ${groupDigits(range.hi)}` : 'An endless room: its volumes are ordered by size' },
+        shape.finite ? `${groupDigits(shape.total)} volumes` : `∞ · ${[0, 1, 2, 3].map(s => groupDigits(shape.count(s))).join(', ')}, … by size`)),
+    views));
+  const c = censusOf(wing, params);
+  page.append(censusBar(c));
+  page.append(B.view === 'plates' ? roomPlates(wing, params, c) : roomMap(c));
+  startCensus(c);
+  return page;
+}
+
+/** The range a room's map shows: the whole of a finite room, or the first few sizes of an endless one. */
+function mapRange(wing, params) {
+  const id = roomId(wing, params);
+  const stack = B.zoom.get(id) || [];
+  if (stack.length) return { ...stack[stack.length - 1], depth: stack.length };
+  const shape = roomShape(wing, params);
+  if (shape.finite) return { lo: 0n, hi: shape.total, depth: 0 };
+  let hi = 0n, s = 0;
+  while (hi < 2048n && s < 400) { hi += shape.count(s); s++; }
+  return { lo: 0n, hi, depth: 0, sizes: s - 1 };
+}
+
+/** Columns for a map: the room's lowest digits, so its structure lines up; else near-square. */
+function mapColumns(wing, params, block, cells) {
+  const shape = roomShape(wing, params);
+  if (block === 1n && shape.finite && shape.radices) {
+    let w = 1n;
+    for (const r of shape.radices()) {
+      if (w * r > 128n) break;
+      w *= r;
+      if (w >= 32n) break;
+    }
+    if (w >= 8n && w <= 128n) return Number(w);
+  }
+  return Math.min(96, Math.max(1, Math.ceil(Math.sqrt(cells * 1.6))));
+}
+
+/**
+ * A map's cells and their classes, as far as they have been read. Kept per
+ * room and range, so the census bar, the map and the minimap share one
+ * reading, and switching between the map and the plates reads nothing twice.
+ */
+function censusOf(wing, params) {
+  const id = roomId(wing, params);
+  const range = mapRange(wing, params);
+  const key = `${id}:${range.lo}:${range.hi}`;
+  const had = B.census.get(key);
+  if (had) { had.watchers = []; return had; }
+  const size = range.hi - range.lo;
+  const cells = Number(size < BigInt(MAX_CELLS) ? size : BigInt(MAX_CELLS));
+  const block = cells ? (size + BigInt(cells) - 1n) / BigInt(cells) : 1n;
+  const cols = mapColumns(wing, params, block, cells);
+  const sample = seededBelow(`${id}:${range.lo}:${range.hi}`);
+  const volumes = Array.from({ length: cells }, (_, i) => {
+    const start = range.lo + BigInt(i) * block;
+    const span = start + block > range.hi ? range.hi - start : block;
+    return block === 1n ? start : start + sample(span);
+  });
+  const c = {
+    key, id, wing, params, range, size, cells, block, cols, rows: Math.ceil(cells / cols), volumes,
+    found: new Array(cells).fill(null), classes: cellClassesOf(wing), next: 0, inflight: 0, watchers: []
+  };
+  B.census.set(key, c);
+  if (B.census.size > 24) B.census.delete(B.census.keys().next().value);
+  return c;
+}
+
+function censusDone(c) {
+  return c.next >= c.cells && c.inflight === 0;
+}
+
+function notifyCensus(c) {
+  for (const fn of c.watchers) {
+    try { fn(); } catch { /* a page that has gone */ }
+  }
+}
+
+/** Read the cells: here for cheap finite-automaton rooms, in the worker otherwise. */
+function startCensus(c) {
+  B.active = c.key;
+  if (c.next >= c.cells) { setTimeout(() => notifyCensus(c), 0); return; }
+  const { wing, params } = c;
+  const cheap = (wing.kind === 'fa' || wing.kind === 'omega') && c.cells <= 6000 && params[0] <= 12;
+  if (cheap) {
+    const sh = roomShape(wing, params);
+    c.volumes.forEach((v, i) => {
+      try { c.found[i] = classifyBody(wing, params, sh.finite ? sh.unrank(0, v) : openVolume({ wing, params, volume: v }).body); }
+      catch { c.found[i] = 'x'; }
+    });
+    c.next = c.cells;
+    setTimeout(() => notifyCensus(c), 0);
+    return;
+  }
+  const CHUNK = wing.kind === 'tm' ? 128 : 256;
+  const pump = () => {
+    if (B.active !== c.key || c.next >= c.cells) return;
+    const from = c.next;
+    c.next = Math.min(c.cells, c.next + CHUNK);
+    c.inflight++;
+    askBabel({ type: 'classify', key: wing.key, params, volumes: c.volumes.slice(from, c.next).map(String) }).then(reply => {
+      c.inflight--;
+      (reply.classes || []).forEach((k, j) => { c.found[from + j] = k; });
+      if (B.active !== c.key) {
+        // Left mid-way: what was asked for and not answered is asked again on return.
+        if (c.inflight === 0) c.next = c.found.findIndex(x => !x) < 0 ? c.cells : c.found.findIndex(x => !x);
+        return;
+      }
+      notifyCensus(c);
+      pump();
+    });
+  };
+  while (c.inflight < 2 && c.next < c.cells) pump();
+  setTimeout(() => notifyCensus(c), 0);
+}
+
+function tallyOf(c) {
+  const tally = new Map();
+  let done = 0;
+  for (const k of c.found) if (k) { tally.set(k, (tally.get(k) || 0) + 1); done++; }
+  return { tally, done };
+}
+
+/**
+ * The census as one bar: a share per class, in the order the wing lists
+ * them, and under it the same classes as words with their counts. The bar is
+ * the legend and the filter — picking a class lights it on the map and keeps
+ * only its plates.
+ */
+function censusBar(c) {
+  const { wing, id } = c;
+  const box = h('section', { class: 'bab-census', 'aria-label': 'Census of this room' });
+  const lit = B.lit.get(id) || null;
+  const pick = key => { B.lit.set(id, lit === key ? null : key); go('babel-room', id, { push: false }); };
+  const paint = () => {
+    const { tally, done } = tallyOf(c);
+    box.innerHTML = '';
+    const bar = h('div', { class: `bab-census-bar${lit ? ' has-lit' : ''}` });
+    for (const k of c.classes) {
+      const n = tally.get(k.key) || 0;
+      if (!n) continue;
+      bar.append(h('button', {
+        type: 'button', class: `bab-census-seg bab-swatch${lit === k.key ? ' is-on' : ''}`, data: { cls: k.key, kind: wing.kind },
+        style: `flex-grow:${n}`, title: `${k.label}: ${groupDigits(n)}${c.block > 1n ? ' of the cells sampled' : ''} — ${k.say}`,
+        'aria-label': `${k.label}: ${groupDigits(n)}`, on: { click: () => pick(k.key) }
+      }));
+    }
+    if (done < c.cells) bar.append(h('span', { class: 'bab-census-pending', style: `flex-grow:${c.cells - done}` }));
+    const key = h('div', { class: 'bab-census-key' });
+    for (const k of c.classes) {
+      const n = tally.get(k.key) || 0;
+      key.append(h('button', {
+        type: 'button', class: `bab-census-item${lit === k.key ? ' is-on' : ''}`, title: k.say, 'aria-pressed': lit === k.key ? 'true' : 'false',
+        on: { click: () => pick(k.key) }
+      }, h('i', { class: 'bab-swatch', data: { cls: k.key, kind: wing.kind } }), h('span', { text: k.label }), h('span', { class: 'bab-census-n', text: groupDigits(n) })));
+    }
+    if (done < c.cells) key.append(h('span', { class: 'bab-census-progress', text: `reading… ${Math.round((done / c.cells) * 100)}%` }));
+    else if (c.block > 1n) key.append(h('span', { class: 'bab-census-progress', text: `one volume sampled per ${groupDigits(c.block)}` }));
+    else if (c.range.sizes !== undefined) key.append(h('span', { class: 'bab-census-progress', text: `first ${groupDigits(c.size)} volumes, sizes 0–${c.range.sizes}` }));
+    box.append(bar, key);
+  };
+  c.watchers.push(paint);
+  paint();
+  return box;
+}
+
+/** Resolve the map's colours from the theme: a canvas cannot read var() or color-mix(). */
+function mapPalette(host, wing) {
+  const resolve = name => {
+    try {
+      const probe = h('span', { class: 'bab-probe', style: `color: var(${name})` });
+      host.append(probe);
+      const col = getComputedStyle(probe).color;
+      probe.remove();
+      return col || null;
+    } catch { return null; }
+  };
+  const palette = Object.fromEntries(cellClassesOf(wing).map(k => [k.key, resolve(`--bab-${wing.kind}-${k.key}`) || '#888']));
+  palette.pending = resolve('--bab-pending') || 'rgba(128,128,128,.12)';
+  palette.ink = resolve('--text') || '#222';
+  return palette;
+}
+
+/** Paint a census's cells into a canvas; a lit class keeps its colour and the rest go quiet. */
+function paintCells(canvas, c, palette, { cellW, cellH, gap = true, lit = null, frame = null }) {
+  const ctx = canvas.getContext?.('2d');
+  if (!ctx) return;
+  const dpr = globalThis.devicePixelRatio || 1;
+  canvas.width = c.cols * cellW * dpr;
+  canvas.height = c.rows * cellH * dpr;
+  canvas.style.width = `${c.cols * cellW}px`;
+  canvas.style.height = `${c.rows * cellH}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const gw = gap && cellW > 4 ? 1 : 0, gh = gap && cellH > 4 ? 1 : 0;
+  for (let i = 0; i < c.cells; i++) {
+    const k = c.found[i];
+    ctx.fillStyle = k && (!lit || k === lit) ? palette[k] || palette.pending : palette.pending;
+    ctx.fillRect((i % c.cols) * cellW, Math.floor(i / c.cols) * cellH, cellW - gw, cellH - gh);
+  }
+  if (frame) {
+    ctx.strokeStyle = palette.ink;
+    ctx.lineWidth = 1.5;
+    const [s, e] = frame;
+    for (let row = Math.floor(s / c.cols); row <= Math.floor(e / c.cols); row++) {
+      const x0 = row === Math.floor(s / c.cols) ? s % c.cols : 0;
+      const x1 = row === Math.floor(e / c.cols) ? e % c.cols : c.cols - 1;
+      ctx.strokeRect(x0 * cellW - 1, row * cellH - 1, (x1 - x0 + 1) * cellW + 2, cellH + 2);
+    }
+  }
+}
+
+/** The map, and beside it a reading pane that follows the pointer, so nothing covers the map. */
+function roomMap(c) {
+  const { wing, params, id, block, range } = c;
+  const wrap = h('section', { class: 'bab-map-sec' });
+  const stack = B.zoom.get(id) || [];
+  if (stack.length || block > 1n) {
+    wrap.append(h('div', { class: 'bab-map-bar' },
+      stack.length ? button('← Zoom out', () => { stack.pop(); B.zoom.set(id, stack); go('babel-room', id, { push: false }); }, 'lib-textbtn') : null,
+      h('span', { class: 'bab-map-scale', text: block > 1n ? `1 cell = ${groupDigits(block)} volumes · click to zoom` : `volumes ${groupDigits(range.lo)} to ${groupDigits(range.hi - 1n)}` })));
+  }
+  const canvas = h('canvas', { class: 'bab-map', role: 'img', 'aria-label': `A map of ${id}, one cell per ${block === 1n ? 'volume' : 'block of volumes'}` });
+  const frame = h('div', { class: 'bab-map-frame lib-fig' }, canvas);
+  const pane = h('aside', { class: 'bab-reading', 'aria-live': 'polite' });
+  wrap.append(h('div', { class: 'bab-map-row' }, frame, pane));
+  paintReadingIdle(pane, c);
+
+  const lit = B.lit.get(id) || null;
+  let palette = null, cellW = 6, cellH = 4;
+  const draw = () => {
+    const width = Math.max(240, Math.min((frame.clientWidth || 640) - 24, 900));
+    cellW = Math.max(3, Math.min(12, Math.floor(width / c.cols)));
+    cellH = Math.max(3, Math.round(cellW * (c.cols > 48 ? 0.62 : 0.8)));
+    palette = palette || mapPalette(frame, wing);
+    paintCells(canvas, c, palette, { cellW, cellH, lit });
+  };
+  const cellAt = ev => {
+    const rect = canvas.getBoundingClientRect?.();
+    if (!rect) return -1;
+    const x = Math.floor((ev.clientX - rect.left) / cellW), y = Math.floor((ev.clientY - rect.top) / cellH);
+    const i = y * c.cols + x;
+    return x >= 0 && x < c.cols && i >= 0 && i < c.cells ? i : -1;
+  };
+  let shown = -1, queued = -1, raf = 0;
+  const later = globalThis.requestAnimationFrame || (fn => setTimeout(fn, 16));
+  canvas.addEventListener('mousemove', ev => {
+    queued = cellAt(ev);
+    if (raf) return;
+    raf = later(() => {
+      raf = 0;
+      if (queued < 0 || queued === shown) return;
+      shown = queued;
+      paintReading(pane, c, shown);
+    });
+  });
+  canvas.addEventListener('click', ev => {
+    const i = cellAt(ev);
+    if (i < 0) return;
+    if (block > 1n) {
+      const lo = range.lo + BigInt(i) * block;
+      const hi = lo + block > range.hi ? range.hi : lo + block;
+      B.zoom.set(id, [...stack, { lo, hi }]);
+      go('babel-room', id, { push: false });
+    } else go('babel-volume', volumeAddress(wing, params, c.volumes[i]));
+  });
+  c.watchers.push(draw);
+  setTimeout(draw, 0);
+  return wrap;
+}
+
+function paintReadingIdle(pane, c) {
+  pane.innerHTML = '';
+  pane.append(
+    h('div', { class: 'lib-fig bab-reading-empty' }, h('span', { text: 'Point at the map' })),
+    h('p', { class: 'bab-reading-hint', text: c.block > 1n ? 'Each cell stands for a block of volumes; a click zooms in.' : 'Each cell is one volume; a click opens it.' }));
+}
+
+/** The reading pane: the volume under the pointer, as a plate with its number and what it says. */
+function paintReading(pane, c, i) {
+  const { wing, params, block } = c;
+  const volume = c.volumes[i];
+  let v = null;
+  try { v = openVolume({ wing, params, volume }); } catch { /* past the room */ }
+  if (!v) return;
+  const lab = c.classes.find(k => k.key === c.found[i]);
+  const said = wing.kind === 'fa' ? sayVolume(wing, params, v.body).text : null;
+  let wingNo = null;
+  try { const n = wingNumberOf(wing, params, volume); if (n.toString().length <= 30) wingNo = `wing № ${groupDigits(n)}`; } catch { /* past the search */ }
+  pane.innerHTML = '';
+  pane.append(
+    plateFigure(v.doc, { w: 300, h: 160 }),
+    h('div', { class: 'bab-reading-num' }, h('span', { text: `№ ${showNumber(volume).text}` })),
+    h('span', { class: 'bab-reading-addr', text: `${v.address}${wingNo ? ` · ${wingNo}` : ''}` }),
+    lab ? h('span', { class: 'bab-reading-cls' }, h('i', { class: 'bab-swatch', data: { cls: lab.key, kind: wing.kind } }), lab.label) : h('span', { class: 'bab-reading-cls', text: 'reading…' }),
+    said ? h('span', { class: 'bab-reading-says', text: `accepts ${said}` }) : null,
+    block > 1n ? h('span', { class: 'bab-reading-note', text: `one of ${groupDigits(block)} in this cell · click to zoom` }) : button('Open the volume →', () => go('babel-volume', v.address), 'lib-textbtn bab-walk is-strong'));
+}
+
+/** Plates, a page at a time — and beside them the map as a minimap, framing the page you are on. */
+function roomPlates(wing, params, c) {
+  const id = roomId(wing, params);
+  const shape = roomShape(wing, params);
+  const from = B.from.get(id) ?? 0n;
+  const lit = B.lit.get(id) || null;
+  const filterable = lit && (wing.kind === 'fa' || wing.kind === 'omega');
+  const wrap = h('section', { class: 'bab-plates-sec' });
+  const list = [];
+  let v = from;
+  let scanned = 0;
+  while (list.length < PLATES && scanned < 4000) {
+    if (shape.finite && v >= shape.total) break;
+    scanned++;
+    let opened;
+    try { opened = openVolume({ wing, params, volume: v }); } catch { break; }
+    if (filterable) {
+      let k = null;
+      try { k = classifyBody(wing, params, opened.body); } catch { /* keep it */ }
+      if (k && k !== lit) { v += 1n; continue; }
+    }
+    if (B.canonicalOnly) {
+      let cc = null;
+      try { cc = canonicalOf(wing, params, opened.body, { budget: 400 }); } catch { /* keep it */ }
+      if (cc && cc.exact && cc.volume !== v) { v += 1n; continue; }
+    }
+    list.push(opened);
+    v += 1n;
+  }
+  const last = list.length ? list[list.length - 1].volume : from;
+  const prev = () => { B.from.set(id, from > BigInt(PLATES) ? from - BigInt(PLATES) : 0n); go('babel-room', id, { push: false }); };
+  const next = () => { B.from.set(id, last + 1n); go('babel-room', id, { push: false }); };
+  const check = h('input', { type: 'checkbox', checked: B.canonicalOnly ? '' : null });
+  check.addEventListener('change', () => { B.canonicalOnly = !!check.checked; go('babel-room', id, { push: false }); });
+  const litLabel = lit ? c.classes.find(k => k.key === lit)?.label : null;
+  const main = h('div', { class: 'bab-plates-main' },
+    h('div', { class: 'bab-plates-bar' },
+      h('button', { type: 'button', class: 'bab-step', title: 'Earlier volumes', 'aria-label': 'Earlier volumes', disabled: from === 0n ? '' : null, on: { click: prev } }, '‹'),
+      h('span', { class: 'bab-plates-range', text: list.length ? `${showNumber(from).text} – ${showNumber(last).text}` : 'No volumes here' }),
+      h('button', { type: 'button', class: 'bab-step', title: 'Later volumes', 'aria-label': 'Later volumes', disabled: shape.finite && last + 1n >= shape.total ? '' : null, on: { click: next } }, '›'),
+      filterable ? h('span', { class: 'bab-plates-lit', text: `only ${litLabel}` }) : null,
+      h('label', { class: 'bab-check', title: 'Hide twins: show only the canonical copy of each machine' }, check, h('span', { text: 'Canonical only' }))));
+  const grid = h('div', { class: 'bab-plates' });
+  for (const o of list) {
+    const said = sayVolume(wing, params, o.body);
+    grid.append(h('button', {
+      type: 'button', class: 'bab-plate', data: { cls: said.cls, kind: wing.kind },
+      on: { click: () => go('babel-volume', o.address) }, title: `${o.address} — ${said.text}`
+    },
+    plateFigure(o.doc, { w: 180, h: 110 }),
+    h('span', { class: 'bab-plate-cap' },
+      h('i', { class: 'bab-swatch', data: { cls: said.cls, kind: wing.kind } }),
+      h('span', { class: 'bab-plate-num', text: showNumber(o.volume).text }),
+      h('span', { class: 'bab-plate-says', text: said.text }))));
+  }
+  main.append(grid);
+  wrap.append(main);
+
+  // The minimap: only where a cell is a volume, so the frame is the page exactly.
+  if (c.block === 1n && c.range.lo === 0n && list.length && last < BigInt(c.cells)) {
+    const canvas = h('canvas', { class: 'bab-minimap', role: 'img', 'aria-label': 'Where these plates are in the room' });
+    const box = h('aside', { class: 'bab-minimap-box' }, h('div', { class: 'lib-fig bab-minimap-frame' }, canvas),
+      h('span', { class: 'bab-minimap-say', text: 'The frame is this page; click to move.' }));
+    let palette = null, cell = 2;
+    const draw = () => {
+      cell = Math.max(1, Math.min(4, Math.floor(180 / c.cols)));
+      palette = palette || mapPalette(box, wing);
+      paintCells(canvas, c, palette, { cellW: cell, cellH: cell, gap: false, lit, frame: [Number(from), Number(last)] });
+    };
+    canvas.addEventListener('click', ev => {
+      const rect = canvas.getBoundingClientRect?.();
+      if (!rect) return;
+      const x = Math.floor((ev.clientX - rect.left) / cell), y = Math.floor((ev.clientY - rect.top) / cell);
+      const i = y * c.cols + x;
+      if (x < 0 || x >= c.cols || i < 0 || i >= c.cells) return;
+      B.from.set(id, BigInt(Math.floor(i / PLATES) * PLATES));
+      go('babel-room', id, { push: false });
+    });
+    c.watchers.push(draw);
+    setTimeout(draw, 0);
+    wrap.append(box);
+  }
+  return wrap;
+}
+
+// ── A volume ──────────────────────────────────────────────────────
+
+function pageVolume(address) {
+  const a = parseAddress(address || '');
+  const wing = a && wingByKey(a.key);
+  if (!wing || (!a.params && a.wingNumber === null) || (a.params && a.volume === null)) return errorPage('There is no such volume', `“${address}” is not the address of a volume.`);
+  let v;
+  try { v = openVolume(a.params ? { wing, params: a.params, volume: a.volume } : { wing, wingNumber: a.wingNumber }); }
+  catch (e) { return errorPage('There is no such volume', e.message); }
+  const { params, volume, body, doc } = v;
+  const addr = v.address;
+  const shape = roomShape(wing, params);
+  const last = shape.finite ? shape.total - 1n : null;
+  B.current = { wing, params, volume, last };
+  const page = h('div', { class: 'lib-page bab-page bab-volume', data: { family: familyOf(wing) } });
+  page.append(locationBar({ wing, params, volume, tail: positionTail(wing, params, volume) }));
+
+  // Its number, its number in the wing, and the two things to do with it.
+  const shown = showNumber(volume);
+  let wingNo = null;
+  try { const n = wingNumberOf(wing, params, volume); if (n.toString().length <= 30) wingNo = `${wing.type} № ${groupDigits(n)}`; } catch { /* past the search */ }
+  page.append(h('div', { class: 'bab-vol-head' },
+    h('div', { class: 'bab-vol-title' },
+      h('h2', { class: `bab-number${shown.long ? ' is-long' : ''}`, title: `Volume ${groupDigits(volume)}` }, h('span', { class: 'bab-number-mark', text: '№ ' }), shown.text),
+      h('div', { class: 'bab-vol-sub' },
+        wingNo ? h('span', { title: `Its number in the whole ${wing.type} wing`, text: wingNo }) : null,
+        shown.long ? h('span', {}, `${groupDigits(shown.digits)} digits · `, button('copy', () => exportCopyText(volume.toString(), 'Every digit copied'), 'lib-textbtn')) : null,
+        shape.finite ? null : h('span', { title: 'An endless room orders its volumes by size', text: `size ${v.size}` }))),
+    h('div', { class: 'bab-vol-actions' },
+      button('Open on canvas', () => openOnCanvas(doc, addr), 'btn-p'),
+      saveButton(v, wingNo),
+      h('button', { type: 'button', class: 'bab-icon-btn', title: 'Copy a link to this volume', 'aria-label': 'Copy link', on: { click: () => exportCopyText(webAppLink({ action: 'babel', address: addr }), 'Link to this volume copied') } }, icon('link')))));
+
+  // The plate between its neighbours on the shelf, and its facts in the margin.
+  const target = targetFromDoc(doc);
+  const stage = volumeStage(target, doc);
+  const said = sayLine(wing, params, body, doc);
+  const figure = h('div', { class: 'bab-vol-fig' }, stage.node, said ? h('p', { class: 'bab-says', text: said }) : null, tryIt(target, stage));
+  const facts = h('aside', { class: 'bab-margin', 'aria-label': 'Facts' });
+  page.append(h('div', { class: 'bab-vol-body' },
+    h('div', { class: 'bab-shelf' }, sideVolume(wing, params, volume - 1n, last, 'prev'), figure, sideVolume(wing, params, volume + 1n, last, 'next')),
+    facts));
+  fillFacts(facts, { wing, params, body, doc, volume, addr });
+
+  page.append(spelledSection(wing, params, body, volume, stage));
+  if (shape.finite) page.append(neighbourSection(wing, params, body, volume));
+  return page;
+}
+
+/**
+ * Save, as a catalogue entry has it: into My Library, under `babel:<address>`,
+ * kept as the document the number spells, so it opens offline and lists beside
+ * the catalogue's machines. The same button, the same words, the same store.
+ */
+function saveButton(v, wingNo) {
+  const id = `babel:${v.address}`;
+  const saved = isInMyLibraryNow(id);
+  const entry = { id, title: wingNo || `${v.wing.type} ${v.address}`, machine: v.wing.type, babel: v.address };
+  return button(saved ? 'Saved' : 'Save', () => toggleSavedVolume(entry, JSON.stringify(v.doc)), `btn-g${saved ? ' is-saved' : ''}`,
+    { 'aria-pressed': saved ? 'true' : 'false', 'data-tip': saved ? 'In My Library — opens offline' : 'Keep a copy in My Library that opens offline' });
+}
+
+/** A neighbour on the shelf: the volume either side, quiet, one step away. */
+function sideVolume(wing, params, volume, last, side) {
+  if (volume < 0n || (last !== null && volume > last)) return h('div', { class: `bab-side is-${side} is-none` });
+  let o;
+  try { o = openVolume({ wing, params, volume }); } catch { return h('div', { class: `bab-side is-${side} is-none` }); }
+  const said = sayVolume(wing, params, o.body).text;
+  return h('button', {
+    type: 'button', class: `bab-side is-${side}`, title: `${side === 'prev' ? 'Previous' : 'Next'} volume (${side === 'prev' ? '←' : '→'}) — ${said}`,
+    on: { click: () => go('babel-volume', o.address, { push: false }) }
+  },
+  plateFigure(o.doc, { w: 160, h: 120 }),
+  h('span', { class: 'bab-side-cap' }, side === 'prev' ? `‹ ${showNumber(volume).text}` : `${showNumber(volume).text} ›`),
+  h('span', { class: 'bab-side-says', text: said }));
+}
+
+/** One line of what a volume does, the first thing a reader wants to know. */
+function sayLine(wing, params, body, doc) {
+  if (wing.kind === 'fa') {
+    const t = dfaOf(wing.type, params, body);
+    if (!t) return null;
+    const c = languageClass(t);
+    if (c === 'e') return 'Accepts nothing.';
+    if (c === 'u') return 'Accepts every word.';
+    const words = firstWords(t, { count: 4 }).map(w => (w.length ? w.map(letterName).join('') : 'ε'));
+    return `Accepts ${words.join(', ')}${c === 'f' && words.length < 4 ? '' : ', …'}`;
+  }
+  if (wing.kind === 'omega') return classifyBody(wing, params, body) === 'o' ? 'Accepts some ω-word.' : 'Accepts no ω-word.';
+  if (TRANSDUCERS.has(wing.type)) {
+    return withVolumeLoaded(doc, () => shortWords(doc.sigma, 2).slice(0, 5).map(w => {
+      const r = decideText(doc.machine, w);
+      const out = Array.isArray(r.output) ? r.output.join(' | ') : r.output;
+      return `${w || 'ε'} ↦ ${r.verdict === 'err' ? '—' : out === '' || out === null || out === undefined ? 'ε' : out}`;
+    }).join(', '));
+  }
+  if (wing.kind === 'tm') return null;
+  const c = classifyBody(wing, params, body);
+  const lab = cellClassesOf(wing).find(x => x.key === c);
+  return lab ? `${lab.label[0].toUpperCase()}${lab.label.slice(1)} of the words up to length 3.` : null;
+}
+
+function openOnCanvas(doc, addr) {
+  const ok = applyDocument(JSON.stringify(doc), `${addr.replace(/[^a-z0-9-]+/gi, '_')}.automaton`, { tabName: addr });
+  if (!ok) return false;
+  if (App.view !== 'build') setView('build');
+  showStatus(`Opened ${addr} from the Library of Babel`);
+  return true;
+}
+
+/** The figure: the live diagram (names, labels, lit by Try it), or past 60 states the transition table. */
+function volumeStage(target, doc) {
+  const frame = h('div', { class: 'lib-stage-frame bab-stage-frame' });
+  const runbar = h('div', { class: 'lib-runbar', 'aria-live': 'polite' });
+  runbar.setAttribute('hidden', '');
+  const switcher = h('div', { class: 'lib-figswitch', role: 'tablist' });
+  const caption = h('span', { class: 'lib-figcaption-text' });
+  const node = h('figure', { class: 'lib-stage bab-stage' }, frame, runbar, h('figcaption', { class: 'lib-figcaption bab-figcaption' }, caption, switcher));
+  const stage = { node, frame, runbar, switcher, caption, live: null, pending: null, pictures: new Map() };
+  if (target.states.length <= 60) {
+    try {
+      const live = liveDiagram(target, { w: 640 });
+      const holder = svgFigure(live.svg, 'is-stage lib-live');
+      holder.setAttribute('role', 'img');
+      holder.setAttribute('aria-label', 'This volume’s diagram');
+      frame.style.setProperty('--fig-aspect', `640 / ${live.h}`);
+      frame.append(holder);
+      stage.live = { ...live, el: holder, nodes: null, edges: null };
+      stage.pictures.set('diagram', { label: 'Diagram', say: `${target.states.length} state${target.states.length === 1 ? '' : 's'} · ${target.transitions.length} transition${target.transitions.length === 1 ? '' : 's'}`, node: holder });
+    } catch { /* falls through to the table */ }
+  }
+  if (!stage.pictures.size) {
+    const tableNode = transitionTable(doc);
+    frame.append(tableNode);
+    stage.pictures.set('diagram', { label: 'Table', say: `${groupDigits(target.states.length)} states — too many to sketch, so this is δ`, node: tableNode });
+  }
+  caption.textContent = stage.pictures.get('diagram').say;
+  return stage;
+}
+
+const TABLE_ROWS = 12;
+
+function transitionTable(doc) {
+  const box = h('div', { class: 'bab-table' });
+  let page = 0;
+  const fields = Object.keys(doc.transitions[0] || {}).filter(k => !['id', 'from', 'to', 'curve', 'loopAngle'].includes(k));
+  const names = new Map(doc.states.map(s => [s.id, s.name]));
+  const paint = () => {
+    box.innerHTML = '';
+    const rows = doc.transitions.slice(page * TABLE_ROWS, (page + 1) * TABLE_ROWS);
+    const pages = Math.max(1, Math.ceil(doc.transitions.length / TABLE_ROWS));
+    box.append(h('table', {},
+      h('thead', {}, h('tr', {}, h('th', { text: 'from' }), fields.map(f => h('th', { text: f })), h('th', { text: 'to' }))),
+      h('tbody', {}, rows.map(t => h('tr', {}, h('td', { text: names.get(t.from) }), fields.map(f => h('td', { text: Array.isArray(t[f]) ? t[f].join(' ') : String(t[f] ?? '') })), h('td', { text: names.get(t.to) }))))),
+    h('div', { class: 'bab-table-nav' },
+      h('button', { type: 'button', class: 'bab-step', 'aria-label': 'Earlier rows', disabled: page === 0 ? '' : null, on: { click: () => { page = Math.max(0, page - 1); paint(); } } }, '‹'),
+      h('span', { text: `${page * TABLE_ROWS + 1}–${Math.min(doc.transitions.length, (page + 1) * TABLE_ROWS)} of ${groupDigits(doc.transitions.length)}` }),
+      h('button', { type: 'button', class: 'bab-step', 'aria-label': 'Later rows', disabled: page >= pages - 1 ? '' : null, on: { click: () => { page = Math.min(pages - 1, page + 1); paint(); } } }, '›')));
+  };
+  paint();
+  return box;
+}
+
+function tryIt(target, stage) {
+  const cfg = getMachineConfig(target.machine) || {};
+  const input = h('input', {
+    class: 'lib-try-input', type: 'text', spellcheck: 'false', autocomplete: 'off',
+    placeholder: cfg.isOmega ? 'u(v), e.g. ab(a)' : target.tapeCount > 1 ? 'input for tape 1' : `a word over {${target.sigma.filter(s => s !== target.config?.sym?.eps).join(', ')}}`,
+    'aria-label': 'Word to run'
+  });
+  const out = h('div', { class: 'lib-try-out', 'aria-live': 'polite' });
+  const run = () => {
+    const got = decideRaw(target, input.value);
+    out.innerHTML = '';
+    out.append(verdictChip(input.value, got));
+    if (got.verdict !== 'err' && stage.live) {
+      const trace = traceWord(target, input.value);
+      if (!trace.error && trace.steps.length) playRun(stage, trace, got);
+    }
+  };
+  input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); run(); } });
+  return h('section', { class: 'lib-try bab-try' },
+    h('div', { class: 'lib-try-row' }, input, button('Run', run, 'lib-textbtn bab-run')),
+    out);
+}
+
+/** A fact: a short label and its value over a hairline, with what it means in the tooltip. */
+function fact(label, value, { title = '', cls = '' } = {}) {
+  return h('div', { class: `bab-fact${cls ? ` ${cls}` : ''}`, title },
+    h('span', { class: 'bab-fact-k', text: label }),
+    h('span', { class: 'bab-fact-v' }, value));
+}
+
+const CLASS_WORDS = { e: 'empty', u: 'everything', f: 'finite', c: 'cofinite', o: 'infinite, co-infinite' };
+
+/** The facts in the margin: one short row each, computed. */
+function fillFacts(box, { wing, params, body, doc, volume, addr }) {
+  if (wing.kind === 'fa') {
+    const t = dfaOf(wing.type, params, body);
+    if (t) {
+      const c = languageClass(t);
+      const min = minimiseDfa(t);
+      box.append(fact('Language', CLASS_WORDS[c], { title: 'The class of the language it accepts' }));
+      box.append(fact('Minimal', wing.type === 'DFA' && min.n === params[0] ? '✓ already' : `${min.n} state${min.n === 1 ? '' : 's'}`,
+        { title: wing.type === 'DFA' && min.n === params[0] ? 'No smaller DFA says this' : 'The size of its minimal DFA' }));
+      const rows = languageRows(asSketchDfa(min, Array.from({ length: params[1] }, (_, i) => letterName(i))));
+      if (rows) box.append(h('div', { class: 'bab-lang', title: 'Every word up to a length, one row per length, inked where accepted' }, svgFigure(drawLanguage(rows, { w: 260, h: 96 }), 'bab-lang-fig')));
+    }
+  } else if (wing.omega === 'buchi') {
+    // The DWA and NWA wings were these wings under another name: a weak
+    // automaton decides as Büchi does, so the page says whether this one is weak.
+    const clash = weakViolation(doc);
+    const names = new Map(doc.states.map(s => [s.id, s.name]));
+    box.append(fact('Weak', clash ? `no — {${clash.map(q => names.get(q) || q).join(', ')}} straddles F` : '✓ yes',
+      { title: `Weak: every cycle sits wholly inside F or wholly outside it. A weak automaton (${wing.type === 'DBA' ? 'DWA' : 'NWA'}) is shelved here, since it decides as a Büchi automaton does.` }));
+  } else if (wing.kind === 'tm') {
+    const slot = h('div', { class: 'bab-fact-slot' });
+    box.append(slot);
+    tmVerdict(slot, wing, params, volume, addr, 1e5);
+    const code = (() => { try { return writeStandardTM(doc, doc.config.sym); } catch { return null; } })();
+    if (code) box.append(fact('Code', h('span', {}, h('a', { class: 'lib-link bab-code', href: bbchallengeUrl(code), target: '_blank', rel: 'noopener noreferrer', text: code, title: 'Open on bbchallenge.org' })), { title: 'Its standard code' }));
+  }
+  const conv = conventionsOf(wing, params, body);
+  if (conv.length) box.append(fact('Reads as', conv.map(c => c.split(':')[0]).join(' · '), { title: conv.join('\n') }));
+
+  // Twins, after a tick: a search can take a moment.
+  const twinVal = h('span', { text: '…' });
+  box.append(fact('Twins', twinVal, { title: 'Volumes of this room that are this machine with its states renamed; the canonical copy numbers them breadth-first' }));
+  setTimeout(() => {
+    let c;
+    try { c = canonicalOf(wing, params, body, { budget: 3000 }); } catch { twinVal.textContent = '—'; return; }
+    twinVal.innerHTML = '';
+    if (!c.exact) { twinVal.append('not settled within the budget'); return; }
+    twinVal.append(c.twins === 1n ? 'none' : sayCount(c.twins));
+    if (c.volume === volume) { if (c.twins !== 1n) twinVal.append(h('span', { class: 'bab-fact-note', text: ' · canonical copy' })); }
+    else twinVal.append(h('span', { class: 'bab-fact-note' }, ' · canonical copy is ', button(showNumber(c.volume).text, () => go('babel-volume', volumeAddress(wing, params, c.volume)), 'bab-inline-btn')));
+  }, 0);
+
+  catalogueFact(box, wing, params, body, doc);
+  const notes = [...(B.notes.get(addr) || [])];
+  const names = B.names.get(addr);
+  if (names?.sigma?.length) notes.push(`Your letters ${names.sigma.join(', ')} are ${names.sigma.map((_, i) => letterName(i)).join(', ')} here.`);
+  if (notes.length) box.append(h('p', { class: 'bab-note', text: notes.join(' ') }));
+}
+
+const TRANSDUCERS = new Set(['Moore', 'Mealy', 'FST', 'PDT', '2DFT']);
+
+/** Words over the letters up to a length, shortest first, as run-box text. */
+function shortWords(letters, maxLen) {
+  const out = [''];
+  let layer = [''];
+  for (let len = 1; len <= maxLen; len++) {
+    layer = layer.flatMap(w => letters.map(a => w + a));
+    out.push(...layer);
+  }
+  return out;
+}
+
+function tmVerdict(slot, wing, params, volume, addr, budget) {
+  slot.innerHTML = '';
+  slot.append(fact('Blank tape', h('span', { class: 'bab-fact-note', text: 'running…' })));
+  const key = `${addr}|${budget}`;
+  const show = v => {
+    slot.innerHTML = '';
+    if (!v) { slot.append(fact('Blank tape', '—')); return; }
+    if (v.verdict === 'halts') {
+      slot.append(fact('Halts', `${groupDigits(v.steps ?? 0)} step${v.steps === 1 ? '' : 's'}${v.ones !== undefined ? ` · ${groupDigits(v.ones)} cells` : ''}`, { cls: 'is-good', title: 'From a blank tape, proved by running it; cells are the non-blank cells it leaves' }));
+    } else if (v.verdict === 'never') {
+      slot.append(fact('Never halts', METHOD_WORDS[v.method] || v.method || 'proved', { cls: 'is-warn', title: 'Proved from a blank tape' }));
+    } else {
+      const next = budget < 1e7 ? 1e7 : budget < 2e8 ? 2e8 : null;
+      slot.append(fact('Halts?', h('span', {}, `unknown after ${sayCount(BigInt(Math.round(budget)))} steps`,
+        next ? [' · ', button('try harder', () => tmVerdict(slot, wing, params, volume, addr, next), 'bab-inline-btn')] : null), { cls: 'is-open' }));
+    }
+  };
+  if (B.verdicts.has(key)) { show(B.verdicts.get(key)); return; }
+  askBabel({ type: 'behaviour', key: wing.key, params, volume: volume.toString(), budget }).then(reply => {
+    const v = reply.type === 'behaviour' ? reply.verdict : null;
+    B.verdicts.set(key, v);
+    show(v);
+  });
+}
+
+const METHOD_WORDS = {
+  cycler: 'a cycle', translated: 'a translated cycle', backward: 'backward reasoning', segment: 'halting segment',
+  far: 'finite automata reduction', loops: 'loop decider', ngram: 'n-gram CPS', repwl: 'repeated word list', bouncers: 'bouncer'
+};
+
+/** Rename a volume's letters (and a TM's tape symbols) to another alphabet, index for index. */
+function renamedLetters(doc, to) {
+  const from = doc.sigma || [];
+  if (from.length !== to.length) return null;
+  const map = new Map(from.map((s, i) => [s, String(to[i])]));
+  const re = s => (map.has(s) ? map.get(s) : s);
+  return {
+    ...doc,
+    sigma: from.map(re),
+    stackAlpha: (doc.stackAlpha || []).map(re),
+    transitions: doc.transitions.map(t => ({
+      ...t, symbol: re(t.symbol), ...(t.write !== undefined ? { write: re(t.write) } : {}),
+      ...(Array.isArray(t.tapeSyms) ? { tapeSyms: t.tapeSyms.map(re), tapeWrites: (t.tapeWrites || []).map(re) } : {})
+    }))
+  };
+}
+
+/** Is this volume in the catalogue, under any names for its letters? Does a listed machine say the same? */
+function catalogueFact(box, wing, params, body, doc) {
+  const index = cachedLibrary()?.index;
+  const submit = button('submit it', () => {
+    const b = doc.meta?.babel;
+    if (openOnCanvas(doc, b ? `${b.room}/${b.volume}` : 'babel')) { setView('library'); go('submit'); }
+  }, 'bab-inline-btn');
+  if (!index?.entries?.length) { box.append(fact('Catalogue', h('span', {}, '— · ', submit), { title: 'The catalogue is the Library’s listed machines' })); return; }
+  const n = doc.states.length;
+  let same = null;
+  for (const e of index.entries) {
+    if (!e.machineId || wingOf(e.machine) !== wing || e.stats?.states !== n) continue;
+    const sigma = [...(e.stats.sigma || [])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const renamed = renamedLetters(doc, sigma);
+    if (!renamed) continue;
+    let id = null;
+    try { id = machineIdOf(renamed); } catch { /* not writable */ }
+    if (id && id === e.machineId) { same = e; break; }
+  }
+  if (same) { box.append(fact('Catalogue', button(`${same.title} →`, () => go('entry', same.id), 'bab-inline-btn'), { cls: 'is-good', title: 'This machine is listed in the catalogue' })); return; }
+  if (wing.kind === 'fa') {
+    const t = dfaOf(wing.type, params, body);
+    const min = t && minimiseDfa(t);
+    const says = min && index.entries.find(e => e.dfa && e.dfa.n === min.n && (e.dfa.sigma || []).length === min.k
+      && JSON.stringify(e.dfa.delta) === JSON.stringify(Array.from(min.delta)) && JSON.stringify(e.dfa.acc) === JSON.stringify(Array.from(min.acc).flatMap((x, q) => (x ? [q] : []))));
+    if (says) { box.append(fact('Same language', button(`${says.title} →`, () => go('entry', says.id), 'bab-inline-btn'), { title: `A listed machine accepts the same language, read with its letters ${says.dfa.sigma.join(', ')}` })); return; }
+  }
+  box.append(fact('Catalogue', h('span', {}, 'not listed · ', submit), { title: 'Not in the Library’s catalogue yet' }));
+}
+
+/**
+ * The number spelled: the idea at the Library's heart — the number is the
+ * machine. In a finite room each tile is one term of the sum, and one part of
+ * the machine it sets; pointing at a tile lights its edge. An endless room
+ * spells by size instead.
+ */
+function spelledSection(wing, params, body, volume, stage) {
+  const shown = showNumber(volume).text;
+  const sec = h('section', { class: 'bab-spelled' });
+  const tiles = finiteTiles(wing, params, body);
+  if (tiles) {
+    const terms = tiles.map(t => t.digit * t.place);
+    const sum = `${[tiles.offset, ...terms].filter((x, i) => i || x).map(x => groupDigits(x)).join(' + ')} = ${groupDigits(volume)}`;
+    sec.append(h('div', { class: 'lib-sechead', title: 'Each tile is one digit of the number in its place value, and the part of the machine that digit sets. ↑ and ↓ move to the volume that differs in exactly that part.' },
+      h('h3', { class: 'lib-sechead-title', text: `${shown}, spelled` }),
+      h('span', { class: 'bab-spelled-key', text: 'each term sets one part' })));
+    const MAX = 48;
+    const row = h('div', { class: 'bab-tiles' });
+    tiles.slice(0, MAX).forEach((t, i) => {
+      const go1 = d => go('babel-volume', volumeAddress(wing, params, nudge(tiles, volume, i, d)), { push: false });
+      const rule = `${t.key} ${String(t.value || '').startsWith('{') ? '=' : '→'} ${t.value || '—'}`;
+      const tile = h('div', { class: 'bab-tile', tabindex: '0', title: `${rule}: digit ${t.digit} of ${t.radix}, × ${sayCount(t.place)}` },
+        h('span', { class: 'bab-tile-term', text: sayCount(t.digit * t.place) }),
+        h('span', { class: 'bab-tile-rule', text: rule }),
+        h('span', { class: 'bab-tile-nudge' },
+          button('↑', () => go1(1), 'bab-nudge', { 'aria-label': 'Next value for this part' }),
+          button('↓', () => go1(-1), 'bab-nudge', { 'aria-label': 'Previous value for this part' })));
+      tile.addEventListener('keydown', ev => {
+        if (ev.key === 'ArrowUp') { ev.preventDefault(); go1(1); }
+        if (ev.key === 'ArrowDown') { ev.preventDefault(); go1(-1); }
+      });
+      tile.addEventListener('mouseenter', () => lightTile(stage, t));
+      tile.addEventListener('mouseleave', () => lightTile(stage, null));
+      tile.addEventListener('focus', () => lightTile(stage, t));
+      tile.addEventListener('blur', () => lightTile(stage, null));
+      row.append(tile);
+    });
+    if (tiles.length > MAX) row.append(h('div', { class: 'bab-tile is-more', text: `+${groupDigits(tiles.length - MAX)}` }));
+    sec.append(row);
+    sec.append(sum.length <= 96 ? h('span', { class: 'bab-sum', text: sum }) : h('span', { class: 'bab-sum', title: sum, text: `${groupDigits(tiles.length)} terms add up to ${shown}` }));
+    return sec;
+  }
+  const sp = endlessSpelling(wing, params, body);
+  sec.append(h('div', { class: 'lib-sechead', title: 'In an endless room a volume’s number is every smaller volume first, then its rank at its own size.' },
+    h('h3', { class: 'lib-sechead-title', text: `${shown}, spelled` }),
+    h('span', { class: 'bab-spelled-key', text: `${groupDigits(sp.before)} smaller + rank ${groupDigits(sp.rank)} at size ${sp.size} = ${groupDigits(volume)}` })));
+  sec.append(h('div', { class: 'bab-tiles is-parts' }, sp.items.slice(0, 48).map(it => h('div', { class: 'bab-tile is-part', title: `size ${it.size}` },
+    h('span', { class: 'bab-tile-rule', text: it.key }), h('span', { class: 'bab-tile-val', text: it.value })))));
+  sec.append(h('div', { class: 'bab-ladder', title: 'Volumes of this room at each size' }, sp.counts.slice(0, sp.size + 1).map((c, s) => h('span', { class: `bab-rung${s === sp.size ? ' is-here' : ''}` },
+    h('b', { text: sayCount(c) }), h('small', { text: `size ${s}` })))));
+  return sec;
+}
+
+/** Light the edge a tile is, where the wing says which edge that is. */
+function lightTile(stage, tile) {
+  const live = stage?.live;
+  if (!live?.el) return;
+  for (const n of live.el.querySelectorAll?.('.is-tile') || []) n.classList.remove('is-tile');
+  if (!tile?.edge) return;
+  const [from, to] = tile.edge;
+  const key = `${live.rootOf?.get(`s${from}`) || `s${from}`}|${live.rootOf?.get(`s${to}`) || `s${to}`}`;
+  live.el.querySelector?.(`[data-e="${key}"]`)?.classList.add('is-tile');
+}
+
+function neighbourSection(wing, params, body, volume) {
+  const near = neighbours(wing, params, body, volume, { limit: 6 });
+  if (!near.length) return null;
+  const tiles = finiteTiles(wing, params, body);
+  const sec = h('section', { class: 'bab-near' },
+    h('div', { class: 'lib-sechead', title: 'Volumes that differ from this one in exactly one part' },
+      h('h3', { class: 'lib-sechead-title', text: 'You might be interested in' }),
+      h('span', { class: 'bab-spelled-key', text: 'one part changed' })));
+  const row = h('div', { class: 'bab-near-row' });
+  for (const nb of near) {
+    try {
+      const o = openVolume({ wing, params, volume: nb.volume });
+      const said = sayVolume(wing, params, o.body).text;
+      const t = finiteTiles(wing, params, o.body)?.[nb.tile];
+      row.append(h('button', { type: 'button', class: 'bab-near-chip', title: `${tiles[nb.tile].key}: ${t?.value || '—'} — ${said}`, on: { click: () => go('babel-volume', volumeAddress(wing, params, nb.volume)) } },
+        plateFigure(o.doc, { w: 160, h: 90 }),
+        h('span', { class: 'bab-near-cap' }, h('span', { class: 'bab-near-num', text: showNumber(nb.volume).text }), h('span', { class: 'bab-near-change', text: `${tiles[nb.tile].key} → ${t?.value || '—'}` })),
+        h('span', { class: 'bab-near-says', text: said })));
+    } catch { /* past the room */ }
+  }
+  sec.append(row);
+  reveal([...row.children]);
+  return sec;
+}
+
+// ── From the catalogue ────────────────────────────────────────────
+
+/**
+ * A search the catalogue has no machine for → the Babel volume it names, when
+ * it names one: an address, a machine code, a standard TM code, or a regular
+ * expression that looks like one. Plain words are not a machine — the Finder
+ * would read "palindrome" as the regex for that one word — and neither is a
+ * bare number, which in a catalogue search is not a wing number.
+ */
+export function babelLookup(query) {
+  const raw = String(query || '').trim();
+  if (!raw || /^\d[\d,_ ]*$/.test(raw)) return null;
+  let found;
+  try { found = findVolume(raw, { wing: B.wing }); } catch { return null; }
+  if (!found || found.kind !== 'volume') return null;
+  if (found.regex && !/[*+|()?ε∅]/.test(raw)) return null;
+  return found;
+}
+
+/**
+ * What the catalogue shows when it has no machine: the Library of Babel's
+ * volume for the search — or for the canvas, after Match my canvas — drawn as
+ * a plate that opens it; and when the search names no machine, the way in.
+ * Every machine is in the Library of Babel, so a search that finds nothing in
+ * the catalogue has somewhere to go.
+ */
+export function babelOffer(query, { canvas = false } = {}) {
+  let found = null;
+  if (canvas) {
+    try { found = findVolume('canvas'); } catch { found = null; }
+  } else found = babelLookup(query);
+  let v = null;
+  if (found?.kind === 'volume') {
+    try { v = openVolume({ key: found.key, params: found.params, volume: found.volume }); } catch { v = null; }
+  }
+  if (v) {
+    let wingNo = null;
+    try { const n = wingNumberOf(v.wing, v.params, v.volume); if (n.toString().length <= 30) wingNo = `${v.wing.type} № ${groupDigits(n)}`; } catch { /* past the search */ }
+    const said = found.regex ? `accepts ${found.regex}` : sayVolume(v.wing, v.params, v.body).text;
+    const open = () => followFound(found);
+    return h('section', { class: 'bab-offer', data: { family: familyOf(v.wing) }, 'aria-label': 'In the Library of Babel' },
+      h('button', { type: 'button', class: 'bab-offer-fig', title: `Open ${v.address} in the Library of Babel`, 'aria-label': `Open ${v.address}`, on: { click: open } }, plateFigure(v.doc, { w: 300, h: 160 })),
+      h('div', { class: 'bab-offer-text' },
+        h('span', { class: 'bab-kicker', text: 'The Library of Babel' }),
+        h('p', { class: 'bab-offer-say', text: canvas ? 'Your machine is not in the catalogue, but it has a volume in the Library of Babel.' : 'Not in the catalogue, but it has a volume in the Library of Babel.' }),
+        h('span', { class: 'bab-offer-addr', text: `${wingNo ? `${wingNo} · ` : ''}${v.address}` }),
+        said ? h('span', { class: 'bab-offer-says', text: said }) : null,
+        button('Open the volume →', open, 'lib-textbtn bab-walk is-strong')));
+  }
+  const canvasHasMachine = (App.states || []).length > 0 && !canvas;
+  return h('section', { class: 'bab-offer is-plain', 'aria-label': 'The Library of Babel' },
+    h('div', { class: 'bab-offer-text' },
+      h('span', { class: 'bab-kicker', text: 'The Library of Babel' }),
+      h('p', { class: 'bab-offer-say', text: 'Every machine that could exist has a volume there, this one too.' }),
+      h('span', { class: 'bab-offer-hint', text: found?.kind === 'error' && canvas ? found.error : 'Describe it as a regular expression or a machine code, or bring the one on your canvas.' }),
+      h('div', { class: 'bab-offer-actions' },
+        button('Look it up in the Library of Babel →', () => go('babel'), 'lib-textbtn bab-walk is-strong'),
+        canvasHasMachine ? button('Find my canvas there', () => followFound(findVolume('canvas')), 'lib-textbtn') : null)));
+}
+
+// ── Links ─────────────────────────────────────────────────────────
+
+/** `#babel=…` and automata-studio://babel/… land here. */
+export function babelRequest(req) {
+  if (!req?.address) { go('babel', null, { reset: true }); return true; }
+  const found = findVolume(req.address, { wing: B.wing });
+  if (!found || found.kind === 'error') { go('babel', null, { reset: true }); showStatus(found?.error || 'That is not an address in the Library of Babel.'); return false; }
+  if (found.kind === 'wing') go('babel-wings', found.key, { reset: true });
+  else if (found.kind === 'room') go('babel-room', roomId(wingByKey(found.key), found.params), { reset: true });
+  else go('babel-volume', found.address, { reset: true });
+  return true;
+}
+
+export const BABEL_PAGES = {
+  babel: pageEntrance,
+  'babel-wings': pageWings,
+  'babel-room': pageRoom,
+  'babel-volume': pageVolume
+};
+
+/** What an address is, in a line — for StateMate and the command line. */
+export function describeAddress(text) {
+  const found = findVolume(text, { wing: B.wing });
+  if (!found || found.kind !== 'volume') return found?.error || null;
+  const v = openVolume({ key: found.key, params: found.params, volume: found.volume });
+  return `${found.address}: ${sayVolume(v.wing, v.params, v.body).text}`;
+}

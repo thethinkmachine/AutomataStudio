@@ -147,6 +147,8 @@ export function isLibraryId(id) {
 export function parseLibraryHash(hash) {
   const h = String(hash || '').replace(/^#/, '');
   if (h === 'library') return { action: 'browse' };
+  const babel = parseBabelRequest(h);
+  if (babel) return babel;
   const m = /^(lib|library|collection)=(.+)$/.exec(h);
   if (!m) return null;
   let id;
@@ -173,8 +175,29 @@ export function parseLibrarySourceHash(hash) {
   return url.href.replace(/\/?$/, '/');
 }
 
+/**
+ * `#babel`, `#babel=dfa-3-2/977` → `{ action: 'babel', address }` (address
+ * null for the Entrance), or null. The address is checked here, before it
+ * reaches a page: a link is something anyone can send.
+ */
+export function parseBabelRequest(text) {
+  const h = String(text || '');
+  if (h === 'babel') return { action: 'babel', address: null };
+  const m = /^babel=(.+)$/.exec(h);
+  if (!m) return null;
+  let raw;
+  try { raw = decodeURIComponent(m[1]); } catch { return null; }
+  // js/babel/address.js's grammar, repeated so this module stays import-free.
+  if (raw.length > 200000 || !BABEL_ADDRESS.test(raw)) return null;
+  return { action: 'babel', address: raw };
+}
+
+const BABEL_ADDRESS = /^[0-9]*[a-z][a-z0-9]*(?:-[0-9]+)*(?:\/(?:[0-9][0-9,]*|~[A-Za-z0-9_-]+))?$/i;
+
 /** `automata-studio://lib/<id>` and friends, or null. */
 export function parseLibraryProtocolUrl(url) {
+  const babel = new RegExp(`^${APP_PROTOCOL}:/*babel(?:/(.*?))?/?$`).exec(String(url || '').trim());
+  if (babel) return babel[1] ? parseBabelRequest(`babel=${babel[1]}`) : { action: 'babel', address: null };
   const m = new RegExp(`^${APP_PROTOCOL}:/*(lib|library|collection)(?:/(.*?))?/?$`).exec(String(url || '').trim());
   if (!m) return null;
   if (!m[2]) return m[1] === 'library' ? { action: 'browse' } : null;
@@ -188,6 +211,7 @@ export function parseLibraryProtocolUrl(url) {
 /** The web app's link for a request — what the website's buttons point at. */
 export function webAppLink(req, app = APP_WEB_URL) {
   if (!req || req.action === 'browse') return `${app}#library`;
+  if (req.action === 'babel') return req.address ? `${app}#babel=${encodeURIComponent(req.address)}` : `${app}#babel`;
   const key = req.action === 'open' ? 'lib' : req.action === 'show' ? 'library' : 'collection';
   return `${app}#${key}=${encodeURIComponent(req.id)}`;
 }
@@ -195,6 +219,7 @@ export function webAppLink(req, app = APP_WEB_URL) {
 /** The desktop app's link for the same request. */
 export function protocolLink(req) {
   if (!req || req.action === 'browse') return `${APP_PROTOCOL}://library`;
+  if (req.action === 'babel') return req.address ? `${APP_PROTOCOL}://babel/${req.address}` : `${APP_PROTOCOL}://babel`;
   const key = req.action === 'open' ? 'lib' : req.action === 'show' ? 'library' : 'collection';
   return `${APP_PROTOCOL}://${key}/${req.id.split('/').map(encodeURIComponent).join('/')}`;
 }
