@@ -1883,3 +1883,68 @@ test('the website\'s search turns a pasted machine code into its machine, with t
   const site = await readFile(join(out, 'assets/site.js'), 'utf8');
   assert.match(site, /queryLibrary\(index, codeSearchText\(text\)/);
 });
+
+test('a search the catalogue has no machine for is offered the machine\'s volume in the Library of Babel', async () => {
+  const b = await builtLibrary();
+  resetApp();
+  context.fetch = fakeFetch({ 'index.json': JSON.stringify({ ...b.raw, commit: '' }) });
+  context.renderLibraryView();
+  await context.loadLibrary({ force: true });
+  context.go('browse', null, { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const search = text => {
+    const input = findAll(host, n => n.classList?.contains('lib-search'))[0];
+    input.value = text;
+    input._listeners.keydown({ key: 'Enter', preventDefault() {} });
+    return findAll(host, n => n.classList?.contains('bab-offer'))[0] || null;
+  };
+  // A regular expression names a machine: its minimal DFA's volume, as a plate.
+  const offer = search('(a|b)*abb');
+  assert.ok(offer, 'an empty search offers the Library of Babel');
+  assert.match(textOf(offer), /Not in the catalogue/);
+  assert.match(textOf(offer), /dfa-4-2\/121112/);
+  assert.equal(findAll(offer, n => n.classList?.contains('lib-fig')).length, 1, 'drawn as a plate');
+  findAll(offer, n => n.classList?.contains('bab-walk'))[0]._listeners.click({});
+  assert.equal(context.libraryRoute().page, 'babel-volume');
+  assert.equal(context.libraryRoute().id, 'dfa-4-2/121112');
+  // Plain words name no machine: the way in, and never a volume for the word itself.
+  context.go('browse');
+  const plain = search('zqxj palindrome');
+  assert.ok(plain.classList.contains('is-plain'));
+  assert.match(textOf(plain), /Look it up in the Library of Babel/);
+  assert.doesNotMatch(textOf(plain), /dfa-\d/);
+  // A search the catalogue answers offers nothing.
+  assert.equal(search('busy beaver'), null);
+});
+
+test('a Library of Babel volume saves to My Library as a catalogue entry does, and opens from there', async () => {
+  seedTab();
+  for (const r of await context.listMyLibrary()) await context.removeFromMyLibrary(r.id);
+  context.renderLibraryView();
+  context.go('babel-volume', 'dfa-3-2/977', { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const saveBtn = () => findAll(host, n => n.tagName === 'BUTTON' && /^Saved?$/.test(textOf(n)))[0];
+  assert.equal(textOf(saveBtn()), 'Save');
+  saveBtn()._listeners.click({});
+  await new Promise(r => setTimeout(r, 30));
+  const rows = await context.listMyLibrary();
+  assert.deepEqual(rows.map(r => r.id), ['babel:dfa-3-2/977']);
+  assert.equal(rows[0].entry.title, 'DFA № 1,537');
+  assert.equal(JSON.parse(rows[0].text).machine, 'DFA', 'kept as the document its number spells');
+  assert.equal(textOf(saveBtn()), 'Saved', 'the page says so at once');
+  // My Library lists it beside the catalogue's machines, and opens it offline.
+  context.go('mine');
+  assert.match(textOf(host), /DFA № 1,537/);
+  assert.match(textOf(host), /The Library of Babel · dfa-3-2\/977/);
+  const open = findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Open')[0];
+  open._listeners.click({});
+  assert.equal(context.App.machine, 'DFA');
+  assert.equal(context.App.states.length, 3);
+  context.renderLibraryView();
+  context.go('mine');
+  findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Details')[0]._listeners.click({});
+  assert.equal(context.libraryRoute().page, 'babel-volume');
+  findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Saved')[0]._listeners.click({});
+  await new Promise(r => setTimeout(r, 30));
+  assert.deepEqual((await context.listMyLibrary()).map(r => r.id), []);
+});

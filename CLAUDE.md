@@ -80,6 +80,7 @@ only when they are relevant — same text, same headings, nothing was deleted.
 | `reference/` | the Reference view and its two content registries |
 | `text/` | `html` (escaped templates), Markdown, math in Markdown, where TeX starts and ends |
 | `machines/`, `grammar/`, `library/`, `exercise/`, `lexer/`, `interop/`, `parallel/`, `headless/` | each a feature with its engine — and, where it has one, its UI (`grammar-ui`, `library-ui`, `exercise-ui`, `lexer-ui`) |
+| `babel/` | the Library of Babel: every machine numbered (`shape`, `wings`, `volumes`, `canon`, `facts`, `census`, `spell`), its worker, and its pages in the Library view (`babel-ui`) — see [the library notes](.claude/skills/library/SKILL.md) |
 
 A module's file name did not change when it moved, so a name in a note, a test or a commit still finds it. A new module goes in the folder of the feature it serves; nothing new goes at the top.
 

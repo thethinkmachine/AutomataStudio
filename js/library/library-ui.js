@@ -19,6 +19,8 @@
 //         mine · submit · about
 
 import { $, App, activeWorkspaceId, getMachineConfig } from '../core/state.js';
+import { append, button, h, sectionHead, svgFigure } from './dom.js';
+import { BABEL_PAGES, BABEL_NAV_OF, babelOffer, babelRequest, resetBabelUiForTests } from '../babel/babel-ui.js';
 import { applyDocument, getWorkspaceData } from '../io/persistence.js';
 import { canonicalCodeOf, machineIdOf } from './hash.js';
 import { codeSearchText } from './code-search.js';
@@ -94,6 +96,9 @@ const NAV = [
   { page: 'discover', label: 'Discover' },
   { page: 'browse', label: 'Browse & search' },
   { page: 'collections', label: 'Collections' },
+  { group: 'The Library of Babel' },
+  { page: 'babel', label: 'The Entrance' },
+  { page: 'babel-wings', label: 'Wings' },
   { group: 'Yours' },
   { page: 'mine', label: 'My Library' },
   { page: 'submit', label: 'Submit a machine' },
@@ -101,7 +106,7 @@ const NAV = [
 ];
 
 // Which rail item a page lights up.
-const NAV_OF = { entry: 'browse', collection: 'collections' };
+const NAV_OF = { entry: 'browse', collection: 'collections', ...BABEL_NAV_OF };
 
 /** Test seam. */
 export function _resetLibraryUiForTests() {
@@ -126,6 +131,7 @@ export function _resetLibraryUiForTests() {
   L.docs.clear();
   clearInterval(L.runTimer);
   L.runTimer = null;
+  resetBabelUiForTests();
 }
 
 export function libraryRoute() {
@@ -133,36 +139,8 @@ export function libraryRoute() {
 }
 
 // ── Nodes ─────────────────────────────────────────────────────────
-
-function h(tag, props, ...kids) {
-  const node = document.createElement(tag);
-  if (props) {
-    for (const [k, v] of Object.entries(props)) {
-      if (v === undefined || v === null || v === false) continue;
-      if (k === 'class') node.className = v;
-      else if (k === 'text') node.textContent = v;
-      else if (k === 'on') for (const [ev, fn] of Object.entries(v)) node.addEventListener(ev, fn);
-      else if (k === 'data') for (const [dk, dv] of Object.entries(v)) node.dataset[dk] = dv;
-      else if (k === 'style') node.setAttribute('style', v);
-      else node.setAttribute(k, v === true ? '' : String(v));
-    }
-  }
-  append(node, kids);
-  return node;
-}
-
-function append(node, kids) {
-  for (const kid of kids) {
-    if (kid === null || kid === undefined || kid === false) continue;
-    if (Array.isArray(kid)) append(node, kid);
-    else if (typeof kid === 'string' || typeof kid === 'number') node.append(document.createTextNode(String(kid)));
-    else node.append(kid);
-  }
-}
-
-function button(label, onClick, cls = 'btn-g', extra = {}) {
-  return h('button', { type: 'button', class: cls, on: { click: onClick }, ...extra }, label);
-}
+// h, append, button, svgFigure and sectionHead are js/library/dom.js's, shared
+// with the Library of Babel's pages.
 
 function link(label, href, cls = 'lib-link') {
   return h('a', { class: cls, href, target: '_blank', rel: 'noopener noreferrer' }, label);
@@ -272,6 +250,10 @@ function goBack() {
   else go('discover', null, { reset: true });
 }
 
+/** Whether there is a page to go back to, and going there — for the Babel pages' own bar. */
+export function libraryCanGoBack() { return L.back.length > 0; }
+export function libraryBack() { goBack(); }
+
 function ensureLoaded(force = false) {
   if (L.loading) return L.loading;
   if (L.lib && !force) return Promise.resolve(L.lib);
@@ -315,8 +297,11 @@ function renderPage() {
   if (!host) return;
   host.innerHTML = '';
   const idx = index();
-  host.append(statusBar());
-  if (!idx && L.route.page !== 'about' && L.route.page !== 'submit' && L.route.page !== 'mine') {
+  // The Library of Babel draws its own location bar, which says where the
+  // reader is in it; the catalogue's index status says nothing there.
+  if (!BABEL_PAGES[L.route.page]) host.append(statusBar());
+  // The Library of Babel needs no index: its volumes are computed, not fetched.
+  if (!idx && L.route.page !== 'about' && L.route.page !== 'submit' && L.route.page !== 'mine' && !BABEL_PAGES[L.route.page]) {
     host.append(L.lib?.error ? offlineNotice() : skeleton());
     return;
   }
@@ -358,13 +343,6 @@ function offlineNotice() {
 //  the way a figure sits in a book. The build's SVG files are only the fallback
 //  for a machine too large to carry a sketch.
 
-/** An SVG string drawn by sketch.js → a node. Every string it makes escapes its text. */
-function svgFigure(svg, cls = '') {
-  const box = h('div', { class: `lib-fig${cls ? ` ${cls}` : ''}` });
-  box.innerHTML = svg;
-  return box;
-}
-
 /** The one picture a machine is known by: a Turing machine's run, else its diagram. */
 function figureOf(e, { w = 320, h = 200 } = {}) {
   const f = figureSvg(e, { w, h });
@@ -401,11 +379,6 @@ function plate(e, { when = null } = {}) {
 function grid(entries, empty = null) {
   if (!entries.length) return empty || emptyState('Nothing here yet', 'When machines are added, they appear here.');
   return h('div', { class: 'lib-plates' }, entries.map(plate));
-}
-
-/** A section's heading: a title on a hairline, and what else there is to say or do. */
-function sectionHead(title, aside = null) {
-  return h('div', { class: 'lib-sechead' }, h('h3', { class: 'lib-sechead-title', text: title }), aside);
 }
 
 /** A titled handful of plates, with the way to the rest. */
@@ -453,7 +426,8 @@ const PAGES = {
   collection: pageCollection,
   mine: pageMine,
   submit: pageSubmit,
-  about: pageAbout
+  about: pageAbout,
+  ...BABEL_PAGES
 };
 
 function pageDiscover() {
@@ -625,11 +599,16 @@ function pageBrowse() {
         list.length ? null : button('Submit it', () => go('submit'), 'lib-textbtn')));
     }
     if (!list.length) {
+      // The catalogue holds what was submitted; the Library of Babel holds
+      // every machine. A search for a machine the catalogue lacks — or a
+      // canvas it does not list — is offered the machine's volume there.
+      if (L.canvasMatch) { results.append(babelOffer(null, { canvas: true })); return; }
       results.append(emptyState(
         L.query ? `No machine matches “${L.query}”` : 'No machine matches these filters',
         'Try fewer words or clear a filter — or build it and submit it, and it will be the first.',
         Object.keys(L.filters).length ? button('Clear filters', () => { L.filters = {}; renderPage(); }, 'btn-g') : null,
         button('Submit a machine', () => go('submit'), 'btn-g')));
+      if (L.query) results.append(babelOffer(L.query));
       return;
     }
     // A batch at a time. A new search starts again at one batch; the same
@@ -1076,7 +1055,7 @@ function stepName(stage, step) {
 }
 
 /** Draw a run's strip and play it on the diagram. */
-function playRun(stage, trace, verdict) {
+export function playRun(stage, trace, verdict) {
   clearInterval(L.runTimer);
   L.runTimer = null;
   if (!stage.live) { stage.pending = { trace, verdict }; }
@@ -1164,19 +1143,42 @@ function entryActions(e) {
   return bar;
 }
 
-async function toggleSaved(e) {
+/**
+ * Save or unsave. A catalogue entry's text is its published file; a Library of
+ * Babel volume (`e.babel` is its address, `e.id` is `babel:<address>`) brings
+ * its own, the document its number spells — there is no file to download.
+ */
+async function toggleSaved(e, textOf = async () => (await entryDoc(e)).text) {
   if (L.savedIds.has(e.id)) {
     await removeFromMyLibrary(e.id);
     showStatus(`Removed “${e.title}” from My Library`);
   } else {
     try {
-      const d = await entryDoc(e);
-      await saveToMyLibrary(e, d.text);
+      await saveToMyLibrary(e, await textOf());
       showStatus(`Saved “${e.title}” to My Library — it opens without the network now`);
     } catch (err) { showStatus(`Could not save: ${err.message}`); return; }
   }
   await refreshSaved();
   renderPage();
+}
+
+/** Whether My Library holds this id — a catalogue entry's, or a Babel volume's `babel:<address>`. */
+export function isInMyLibraryNow(id) {
+  return L.savedIds.has(id);
+}
+
+/** Save or unsave a Library of Babel volume: { id: 'babel:<address>', title, machine, babel: address } and its document's text. */
+export function toggleSavedVolume(entry, text) {
+  return toggleSaved(entry, async () => text);
+}
+
+/** Open a saved Babel volume from its kept document, so it opens with no engine and no network. */
+function openSavedVolume(r) {
+  const ok = applyDocument(r.text, `${r.entry.babel.replace(/[^a-z0-9-]+/gi, '_')}.automaton`, { tabName: r.entry.babel });
+  if (!ok) return false;
+  if (App.view !== 'build') setView('build');
+  showStatus(`Opened ${r.entry.title} from My Library`);
+  return true;
 }
 
 // ── Try it ──
@@ -1228,7 +1230,7 @@ function tryIt(e, stage) {
     out, examples);
 }
 
-function verdictChip(word, got, expected = null) {
+export function verdictChip(word, got, expected = null) {
   const w = word === '' ? 'ε' : word;
   let cls = 'lib-verdict', text;
   if (got.verdict === 'err') { cls += ' is-err'; text = `${w} — ${got.error}`; }
@@ -1483,6 +1485,19 @@ function pageMine() {
   const list = h('div', { class: 'lib-mine' });
   for (const r of L.saved) {
     const e = r.entry || { id: r.id, title: r.id, machine: '' };
+    if (e.babel) {
+      // A volume of the Library of Babel: kept as its document, never outdated —
+      // its number is the machine, so there is no newer version to publish.
+      list.append(h('div', { class: 'lib-mine-row' },
+        h('div', { class: 'lib-mine-text' },
+          h('div', { class: 'lib-mine-title', text: e.title }),
+          h('div', { class: 'lib-muted', text: ['The Library of Babel', e.babel, `saved ${relTime(new Date(r.savedAt).toISOString())}`].join(' · ') })),
+        h('div', { class: 'lib-actions' },
+          button('Open', () => openSavedVolume(r), 'btn-p'),
+          button('Details', () => go('babel-volume', e.babel), 'btn-g'),
+          button('Remove', async () => { await removeFromMyLibrary(r.id); await refreshSaved(); renderPage(); }, 'btn-g'))));
+      continue;
+    }
     const fresh = entryById(idx, r.id);
     list.append(h('div', { class: 'lib-mine-row' },
       h('div', { class: 'lib-mine-text' },
@@ -2008,6 +2023,7 @@ export async function handleLibraryRequest(req) {
   if (req.action === 'show') { go('entry', req.id, { reset: true }); return true; }
   if (req.action === 'collection') { go('collection', req.id, { reset: true }); return true; }
   if (req.action === 'open') return openLibraryEntryById(req.id);
+  if (req.action === 'babel') return babelRequest(req);
   return false;
 }
 
