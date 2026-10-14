@@ -19,7 +19,7 @@
 //         mine · submit · about
 
 import { $, App, activeWorkspaceId, getMachineConfig } from '../core/state.js';
-import { append, button, h, sectionHead, svgFigure } from './dom.js';
+import { append, backButton, brandLockup, button, h, sectionHead, svgFigure } from './dom.js';
 import { BABEL_PAGES, BABEL_NAV_OF, babelOffer, babelRequest, resetBabelUiForTests } from '../babel/babel-ui.js';
 import { applyDocument, getWorkspaceData } from '../io/persistence.js';
 import { canonicalCodeOf, machineIdOf } from './hash.js';
@@ -96,7 +96,7 @@ const NAV = [
   { page: 'discover', label: 'Discover' },
   { page: 'browse', label: 'Browse & search' },
   { page: 'collections', label: 'Collections' },
-  { group: 'The Library of Babel' },
+  { group: 'AutomataStudio Babel' },
   { page: 'babel', label: 'The Entrance' },
   { page: 'babel-wings', label: 'Wings' },
   { group: 'Yours' },
@@ -301,7 +301,10 @@ function renderPage() {
   // reader is in it; the catalogue's index status says nothing there.
   if (!BABEL_PAGES[L.route.page]) host.append(statusBar());
   // The Library of Babel needs no index: its volumes are computed, not fetched.
-  if (!idx && L.route.page !== 'about' && L.route.page !== 'submit' && L.route.page !== 'mine' && !BABEL_PAGES[L.route.page]) {
+  // So Browse still searches when the catalogue cannot be reached — Babel
+  // alone, which needs no network.
+  const offlineBrowse = !idx && L.lib?.error && L.route.page === 'browse';
+  if (!idx && !offlineBrowse && L.route.page !== 'about' && L.route.page !== 'submit' && L.route.page !== 'mine' && !BABEL_PAGES[L.route.page]) {
     host.append(L.lib?.error ? offlineNotice() : skeleton());
     return;
   }
@@ -316,7 +319,14 @@ function renderPage() {
 
 function statusBar() {
   const bar = h('div', { class: 'lib-status' });
-  if (L.back.length) bar.append(button('← Back', goBack, 'lib-textbtn lib-back'));
+  if (L.back.length) bar.append(backButton(goBack));
+  // The catalogue's name, as AutomataStudio Babel's header carries its own:
+  // the app's logo and wordmark, then "Library". It goes home, to Discover.
+  bar.append(h('button', {
+    type: 'button', class: 'lib-status-brand', title: 'AutomataStudio Library — Discover',
+    'aria-current': L.route.page === 'discover' ? 'page' : null,
+    on: { click: () => go('discover', null, { reset: true }) }
+  }, brandLockup('Library')));
   const say = [];
   if (L.lib?.index) {
     say.push(`${L.lib.index.entries.length} machines`);
@@ -333,8 +343,13 @@ function statusBar() {
 function offlineNotice() {
   return emptyState('The library could not be reached', `${L.lib.error} Machines you saved to My Library still open without the network.`,
     button('Open My Library', () => go('mine', null, { reset: true }), 'btn-p'),
+    button('Search offline', () => go('browse'), 'btn-g', { 'data-tip': 'Search AutomataStudio Babel, which needs no network — a regular expression, a machine code or your canvas' }),
     button('Try again', () => { L.lib = null; ensureLoaded(true); renderPage(); }, 'btn-g'));
 }
+
+// What Browse reads while the catalogue cannot be reached: nothing listed, and
+// the Library of Babel beside it.
+const NO_CATALOGUE = Object.freeze({ entries: Object.freeze([]), collections: Object.freeze([]) });
 
 // ── Figures ───────────────────────────────────────────────────────
 //  Every picture of a machine is drawn here from what the index carries
@@ -552,7 +567,8 @@ function sameLanguage(e, m) {
 }
 
 function pageBrowse() {
-  const idx = index();
+  const offline = !index();
+  const idx = index() || NO_CATALOGUE;
   const page = h('div', { class: 'lib-page lib-browse' });
   const results = h('div', { class: 'lib-results' });
 
@@ -574,12 +590,21 @@ function pageBrowse() {
       dir.addEventListener('change', () => { L.dir = dir.value; draw(); });
     }
     const note = /\b(accepts|rejects):/.test(L.query) ? ' — word search covers the finite automata, whose minimal DFA the library publishes' : '';
+    if (offline) {
+      results.append(h('div', { class: 'lib-callout' },
+        'The catalogue could not be reached, so this searches AutomataStudio Babel alone — it needs no network. Type a regular expression or a machine code, or match your canvas.',
+        ' ', button('Try again', () => { L.lib = null; ensureLoaded(true); renderPage(); }, 'lib-textbtn')));
+      results.append(L.canvasMatch ? babelOffer(null, { canvas: true, offline: true }) : babelOffer(L.query || null, { offline: true }));
+      return;
+    }
     results.append(h('div', { class: 'lib-resulthead' },
       h('span', { class: 'lib-count', text: `${list.length} of ${idx.entries.length} machines${note}` }),
       h('label', { class: 'lib-sortlabel' }, 'Sort ', sort, dir)));
+    let notListed = false;
     if (L.canvasMatch) {
       const m = L.canvasMatch;
       const exact = list.filter(e => m.machineId && e.machineId === m.machineId);
+      notListed = !exact.length;
       // Two claims of different strength, said separately: "is" this entry,
       // and "recognises the same language as" — which only finite automata
       // can be asked, since only they have a canonical minimal form.
@@ -637,6 +662,10 @@ function pageBrowse() {
     }
     fill(want);
     results.append(plates, row);
+    // Entries that only share the canvas's language, or match a regular
+    // expression's words: the machine itself is still a volume of Babel.
+    const also = notListed ? babelOffer(null, { canvas: true, also: true }) : L.query ? babelOffer(L.query, { also: true }) : null;
+    if (also) results.append(also);
   };
 
   page.append(h('div', { class: 'lib-pagehead' },
@@ -644,7 +673,7 @@ function pageBrowse() {
     h('div', { class: 'lib-searchrow' },
       searchBox({ onInput: q => { L.query = q; draw(); } }),
       button('Match my canvas', matchCanvas, 'btn-g lib-match', { 'data-tip': 'Find the machine on your canvas in the library — the same machine, or for a finite automaton the same language' }))));
-  page.append(h('div', { class: 'lib-browse-body' }, refinePanel(idx, () => { renderPage(); }), results));
+  page.append(h('div', { class: 'lib-browse-body' }, offline ? null : refinePanel(idx, () => { renderPage(); }), results));
   draw();
   return page;
 }
@@ -1109,38 +1138,58 @@ function entryActions(e) {
   bar.append(button(saved ? 'Saved' : 'Save', () => toggleSaved(e), `btn-g${saved ? ' is-saved' : ''}`,
     { 'aria-pressed': saved ? 'true' : 'false', 'data-tip': saved ? 'In My Library — opens offline' : 'Keep a copy that opens offline' }));
 
+  bar.append(moreMenu([
+    canInsertAsBlock(e.machine) ? { label: `Insert into my ${App.machine} as a block`, run: () => insertAsBlock(e) } : null,
+    {
+      label: 'Download the .automaton file',
+      run: async () => {
+        try {
+          const d = await entryDoc(e);
+          exportDownload(`${e.id.split('/').pop()}.automaton`, d.text, 'application/x-automatastudio+json');
+        } catch (err) { showStatus(`Could not download: ${err.message}`); }
+      }
+    },
+    { label: 'Copy link', run: () => exportCopyText(webAppLink({ action: 'show', id: e.id }), 'Link to this machine copied') },
+    { label: 'Its page on the web ↗', href: entryPageUrl(e.id, index()?.site || undefined) },
+    { label: 'Source on GitHub ↗', href: sourceUrl(e.path, index()?.repo || LIBRARY_REPO) }
+  ]));
+  return bar;
+}
+
+/**
+ * The More menu every machine page carries: `items` are { label, run } or
+ * { label, href } (a new tab), and a null is skipped. Shared with the Library
+ * of Babel's volume pages, so the two kinds of page offer the same things in
+ * the same words.
+ */
+export function moreMenu(items) {
   const menu = h('div', { class: 'lib-more-menu', role: 'menu' });
   const more = h('details', { class: 'lib-more' },
     h('summary', { class: 'btn-g lib-more-btn', 'aria-label': 'More actions', title: 'More actions' }, 'More'), menu);
-  const item = (label, fn) => menu.append(h('button', {
-    type: 'button', class: 'lib-more-item', role: 'menuitem',
-    on: { click: () => { more.removeAttribute('open'); fn(); } }
-  }, label));
-  const hrefItem = (label, href) => menu.append(h('a', {
-    class: 'lib-more-item', role: 'menuitem', href, target: '_blank', rel: 'noopener noreferrer',
-    on: { click: () => more.removeAttribute('open') }
-  }, label));
-  if (getMachineConfig(e.machine) && machineSupportsBlocks(App.machine) && machineSupportsBlocks(e.machine)) {
-    item(`Insert into my ${App.machine} as a block`, () => insertAsBlock(e));
+  for (const it of items) {
+    if (!it) continue;
+    menu.append(it.href
+      ? h('a', {
+        class: 'lib-more-item', role: 'menuitem', href: it.href, target: '_blank', rel: 'noopener noreferrer',
+        on: { click: () => more.removeAttribute('open') }
+      }, it.label)
+      : h('button', {
+        type: 'button', class: 'lib-more-item', role: 'menuitem',
+        on: { click: () => { more.removeAttribute('open'); it.run(); } }
+      }, it.label));
   }
-  item('Download the .automaton file', async () => {
-    try {
-      const d = await entryDoc(e);
-      exportDownload(`${e.id.split('/').pop()}.automaton`, d.text, 'application/x-automatastudio+json');
-    } catch (err) { showStatus(`Could not download: ${err.message}`); }
-  });
-  item('Copy link', () => exportCopyText(webAppLink({ action: 'show', id: e.id }), 'Link to this machine copied'));
-  hrefItem('Its page on the web ↗', entryPageUrl(e.id, index()?.site || undefined));
-  hrefItem('Source on GitHub ↗', sourceUrl(e.path, index()?.repo || LIBRARY_REPO));
-  bar.append(more);
-
   if (!moreMenuListening && globalThis.document?.addEventListener) {
     moreMenuListening = true;
     document.addEventListener('pointerdown', ev => {
       for (const d of document.querySelectorAll?.('.lib-more[open]') || []) if (!d.contains(ev.target)) d.removeAttribute('open');
     });
   }
-  return bar;
+  return more;
+}
+
+/** Whether a machine of this type can go into the canvas's machine as a block. */
+export function canInsertAsBlock(machine) {
+  return !!getMachineConfig(machine) && machineSupportsBlocks(App.machine) && machineSupportsBlocks(machine);
 }
 
 /**
@@ -1160,6 +1209,11 @@ async function toggleSaved(e, textOf = async () => (await entryDoc(e)).text) {
   }
   await refreshSaved();
   renderPage();
+}
+
+/** The Library of Babel volumes kept in My Library, newest first: { entry, text, savedAt }. */
+export function savedVolumes() {
+  return (L.saved || []).filter(r => r.entry?.babel).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
 }
 
 /** Whether My Library holds this id — a catalogue entry's, or a Babel volume's `babel:<address>`. */
@@ -1277,7 +1331,12 @@ const METHOD_LABEL = {
   bouncers: 'a bouncer — a formula tape recurs with every repeater longer'
 };
 
-function behaviourSection(e) {
+/**
+ * A Turing machine from a blank tape: its run as a space-time figure, what was
+ * proved, and its standard code. `e` needs only { behaviour, standard }; a
+ * Library of Babel volume passes its `target`, since it has no file to fetch.
+ */
+export function behaviourSection(e, { target = null } = {}) {
   const b = e.behaviour;
   let line;
   if (!b) line = null;
@@ -1301,6 +1360,7 @@ function behaviourSection(e) {
     fig.append(svgFigure(drawRun(f, { w: 360, h: 240 }), 'is-run'), h('figcaption', { class: 'lib-figcaption-text', text: 'The first steps from a blank tape: one row per step, time running down; the outlined cell is the head.' }));
   };
   if (frames) drawFrames(frames);
+  else if (target) drawFrames(runFramesOf(target, 90));
   else entryDoc(e).then(d => drawFrames(runFramesOf(d.target, 90)), () => {});
   return h('section', { class: 'lib-shelf lib-behaviour' }, sectionHead('Behaviour'), h('div', { class: 'lib-behaviour-body' }, fig, text));
 }
@@ -1380,12 +1440,22 @@ export function blockDefinitionFromDoc(doc, name) {
 
 async function insertAsBlock(e) {
   try {
-    const d = await entryDoc(e);
-    const def = blockDefinitionFromDoc(JSON.parse(d.text), e.title.replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 24) || 'block');
-    const block = placeBlockDefinition(def, freeSpotForBlock());
-    if (block) setView('build');
+    insertDocAsBlock(JSON.parse((await entryDoc(e)).text), e.title);
   } catch (err) {
     showStatus(`Could not insert “${e.title}”: ${err.message}`);
+  }
+}
+
+/** Put a machine's document into the canvas's machine as a block, named from `title`. */
+export function insertDocAsBlock(doc, title) {
+  try {
+    const def = blockDefinitionFromDoc(doc, String(title).replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 24) || 'block');
+    const block = placeBlockDefinition(def, freeSpotForBlock());
+    if (block) setView('build');
+    return !!block;
+  } catch (err) {
+    showStatus(`Could not insert “${title}”: ${err.message}`);
+    return false;
   }
 }
 
@@ -1491,7 +1561,7 @@ function pageMine() {
       list.append(h('div', { class: 'lib-mine-row' },
         h('div', { class: 'lib-mine-text' },
           h('div', { class: 'lib-mine-title', text: e.title }),
-          h('div', { class: 'lib-muted', text: ['The Library of Babel', e.babel, `saved ${relTime(new Date(r.savedAt).toISOString())}`].join(' · ') })),
+          h('div', { class: 'lib-muted', text: ['AutomataStudio Babel', e.babel, `saved ${relTime(new Date(r.savedAt).toISOString())}`].join(' · ') })),
         h('div', { class: 'lib-actions' },
           button('Open', () => openSavedVolume(r), 'btn-p'),
           button('Details', () => go('babel-volume', e.babel), 'btn-g'),

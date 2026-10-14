@@ -9,7 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { context, resetApp } from './harness.js';
 import { bits, distribution, distributionOf, fin, fraction, nat, oneOf, option, seq, subset, table, tuple, valueAt, volumeOf } from '../js/babel/shape.js';
-import { WINGS, WINGLESS_ALIASES, readDocument, wingByKey, wingOf } from '../js/babel/wings.js';
+import { WINGS, WINGLESS_ALIASES, readDocument, wingByKey, wingOf, withReaderNames } from '../js/babel/wings.js';
 import {
   fromWingNumber, locateDocument, openVolume, roomShape, volumeAt, volumeNumber, wingNumberOf
 } from '../js/babel/volumes.js';
@@ -210,6 +210,38 @@ test('every bundled example reads into a volume that decides as the original doe
   }
 });
 
+test('a volume given its reader\'s letters back decides as the original, in those letters', () => {
+  let renamed = 0;
+  for (const f of readdirSync(EXAMPLES).filter(f => f.endsWith('.json'))) {
+    const doc = JSON.parse(readFileSync(join(EXAMPLES, f), 'utf8'));
+    const loc = locateDocument(doc);
+    const v = openVolume({ wing: loc.wing, params: loc.params, volume: loc.volume });
+    const own = withReaderNames(v.doc, loc.names);
+    // Every document it makes is one the wing reads back to the same volume.
+    const back = locateDocument(own);
+    assert.ok(!back.error, `${f}: ${back.error}`);
+    assert.equal(back.volume, loc.volume, `${f}: the reader's letters do not change the number`);
+    if (own !== v.doc) renamed++;
+    const cfg = MachineTypes[doc.machine] || {};
+    if (cfg.isOmega || loc.wing.kind === 'tm' || ['MTM', 'LBA', 'NDTM', 'PFA'].includes(doc.machine)) continue;
+    const sigma = loc.names.sigma || [];
+    if (own === v.doc || !sigma.length) continue;
+    assert.deepEqual(own.sigma, sigma, `${f}: drawn over the reader's alphabet`);
+    const sep = sigma.some(s => s.length > 1) ? ' ' : '';
+    const words = [[]];
+    for (const a of sigma.keys()) words.push([a]);
+    for (const a of sigma.keys()) for (const b of sigma.keys()) words.push([a, b]);
+    for (const w of words.slice(0, 40)) {
+      const text = w.map(i => sigma[i]).join(sep);
+      const was = withVolumeLoaded(doc, () => decideText(doc.machine, text));
+      const now = withVolumeLoaded(own, () => decideText(own.machine, text));
+      assert.equal(now.verdict, was.verdict, `${f} on ${JSON.stringify(text)}`);
+      assert.deepEqual(now.output ?? null, was.output ?? null, `${f} emits the same on ${JSON.stringify(text)}`);
+    }
+  }
+  assert.ok(renamed > 10, `most examples are written in letters of their own (${renamed})`);
+});
+
 test('the design\'s numbers: (ab)*, DFA № 1,537 and BB(4)', () => {
   const dfa = wingByKey('dfa');
   const v = openVolume({ wing: dfa, params: [3, 2], volume: 977n });
@@ -254,6 +286,38 @@ test('the Finder reads numbers, addresses, codes and the canvas', () => {
   const f = findVolume('canvas');
   assert.equal(f.address, 'dfa-1-1/1', 'the one-state DFA accepting everything');
   assert.deepEqual(f.names.sigma, ['0'], 'the reader\'s letters are kept for display');
+});
+
+test('the Finder refuses a programmer\'s regex rather than reading its punctuation as letters', () => {
+  const BS = '\\';
+  // Backreferences, lookarounds, other (?…) groups, escapes and inner anchors:
+  // each refused with its reason, never a DFA over an alphabet holding \ or =.
+  for (const [re, why] of [
+    [`^(?=(a+)(b+))(?=${BS}1(b+)c)${BS}1${BS}2${BS}3$`, /Backreferences/],
+    [`(a*)b${BS}1`, /aⁿbaⁿ/],
+    ['a(?=b)b', /Lookarounds/],
+    ['a(?!b)', /Lookarounds/],
+    ['(?<=a)b', /Lookarounds/],
+    ['(?<x>a)b', /named groups/],
+    ['(?R)', /recursion/],
+    [`a${BS}.b`, /Escapes/],
+    ['a^b', /only mean something at the two ends/],
+    ['a$b*', /only mean something at the two ends/]
+  ]) {
+    const f = findVolume(re);
+    assert.equal(f.kind, 'error', re);
+    assert.equal(f.refused, true, re);
+    assert.match(f.error, why, re);
+  }
+  // What does mean the same in the textbook notation is read: a non-capturing
+  // group is a group, and anchors at the ends say what the Finder always does.
+  const plain = findVolume('(a|b)*abb');
+  assert.equal(findVolume('(?:a|b)*abb').address, plain.address);
+  const anchored = findVolume('^(a|b)*abb$');
+  assert.equal(anchored.address, plain.address);
+  assert.deepEqual(anchored.names.sigma, ['a', 'b'], 'neither anchor is a letter');
+  assert.match(anchored.notes.join(' '), /\^ and \$ were dropped/);
+  assert.equal(plain.notes, undefined);
 });
 
 test('a partial DFA is read with a sink, and says so', () => {
@@ -402,7 +466,11 @@ test('the Entrance reads as you type and lists every wing', () => {
   assert.match(page, /Every machine that has ever been conceived,/);
   assert.match(page, /or ever will be\./);
   assert.match(page, /28 wings/);
-  assert.equal(findAll(host, n => n.classList?.contains('bab-wing-link')).length, 30);
+  // One hexagon per wing: DWA and NWA read into DBA's and NBA's wings, and
+  // used to draw those two hexagons a second time.
+  const hexes = findAll(host, n => n.classList?.contains('bab-wing-link')).map(textOf);
+  assert.equal(hexes.length, 28);
+  assert.equal(new Set(hexes).size, 28, 'no wing is drawn twice');
   const input = findAll(host, n => n.classList?.contains('bab-typewriter'))[0];
   input.value = '1537';
   input._listeners.input({});
@@ -425,6 +493,106 @@ test('a volume page: its number, its machine, its tiles and its neighbours', asy
   await new Promise(r => setTimeout(r, 20));
   assert.match(textOf(host), /canonical copy is/);
   assert.equal(context.libraryRoute().page, 'babel-volume');
+});
+
+test('a volume page offers what a catalogue entry does: actions, a definition, its code, words to try', async () => {
+  seedTab();
+  context.renderLibraryView();
+  context.go('babel-volume', 'dfa-3-2/977', { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const page = textOf(host);
+  assert.match(page, /Deterministic Finite Automaton · infinite, co-infinite language/i, 'the kicker');
+  assert.match(page, /3 states, 2 letters/);
+  assert.match(page, /Accepts ε, ab, abab/, 'the lede');
+  for (const label of ['Open in a new tab', 'Save']) assert.ok(findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === label).length, label);
+  const menu = findAll(host, n => n.classList?.contains('lib-more-menu'))[0];
+  for (const item of [/Download the \.automaton file/, /Copy link/, /Copy the address/, /Copy the machine code/, /Submit it to the catalogue/]) assert.match(textOf(menu), item);
+  assert.doesNotMatch(textOf(menu), /as a block/, 'a DFA takes no blocks, so none is offered');
+  // The aside's definition and machine code, as a listing has them.
+  assert.match(page, /Definition/);
+  const code = findAll(host, n => n.classList?.contains('lib-code-text'))[0];
+  const v = openVolume({ key: 'dfa', params: [3, 2], volume: 977n });
+  assert.equal(textOf(code), context.canonicalCodeOf(v.doc));
+  // The shortest words, each decided, each a chip that runs.
+  await new Promise(r => setTimeout(r, 10));
+  const chips = findAll(host, n => n.classList?.contains('lib-verdict'));
+  assert.deepEqual(chips.map(textOf).slice(0, 3), ['ε → accept', 'a → reject', 'b → reject']);
+  assert.ok(chips.some(c => textOf(c) === 'ab → accept'));
+});
+
+test('a long address keeps the bar to one line: its ends, with the whole a press away', () => {
+  seedTab();
+  context.renderLibraryView();
+  const huge = openVolume({ key: 'dfa', params: [20, 11], volume: 10n ** 290n + 12345n });
+  context.go('babel-volume', huge.address, { reset: true });
+  const host = context.document.getElementById('lib-content');
+  const here = findAll(host, n => n.classList?.contains('bab-crumb-seg') && n.classList.contains('is-here'))[0];
+  const word = textOf(findAll(here, n => n.classList?.contains('bab-crumb-word'))[0]);
+  assert.ok(word.length <= 20, `clipped to its ends: ${word}`);
+  assert.match(word, /…/);
+  assert.match(here.getAttribute('title'), new RegExp(huge.address.replace(/[~/]/g, m => `\\${m}`)), 'the tooltip carries all of it');
+  assert.equal(here.tagName, 'BUTTON', 'a press copies the address');
+  // A room the long way round reads in a power of ten, not a caret.
+  assert.match(textOf(findAll(host, n => n.classList?.contains('bab-pos-say'))[0]), /10[⁰¹²³⁴⁵⁶⁷⁸⁹]+/);
+});
+
+test('a volume with no short word says so rather than "Accepts , …"', () => {
+  seedTab();
+  context.renderLibraryView();
+  // A chain of twelve states: the only accepted words are eleven letters long.
+  const n = 12;
+  const doc = {
+    machine: 'DFA', startId: 's0', accepts: [`s${n - 1}`], sigma: ['a'],
+    states: Array.from({ length: n }, (_, i) => ({ id: `s${i}`, name: `q${i}`, x: 0, y: 0 })),
+    transitions: Array.from({ length: n }, (_, i) => ({ id: `t${i}`, from: `s${i}`, to: `s${Math.min(i + 1, n - 1)}`, symbol: 'a' }))
+  };
+  const loc = locateDocument(doc);
+  context.go('babel-volume', loc.address, { reset: true });
+  const page = textOf(context.document.getElementById('lib-content'));
+  assert.match(page, /Accepts no word of 10 letters or fewer, and infinitely many longer ones\./);
+  assert.doesNotMatch(page, /Accepts ,/);
+});
+
+test('a Turing machine volume gets the Behaviour section a listing has, once its verdict is in', async () => {
+  seedTab();
+  context.App.machine = 'TM';
+  context.renderLibraryView();
+  context.go('babel-volume', 'itm-5-2/3285176140368', { reset: true });
+  const host = context.document.getElementById('lib-content');
+  for (let i = 0; i < 40 && !/Halts from a blank tape after/.test(textOf(host)); i++) await new Promise(r => setTimeout(r, 25));
+  const page = textOf(host);
+  assert.match(page, /Behaviour/);
+  assert.match(page, /Halts from a blank tape after 107 steps/);
+  assert.match(page, /1RB1LB_1LA0LC_1RZ1LD_1RD0RA/);
+  assert.ok(findAll(host, n => n.classList?.contains('lib-behaviour-fig') && n.children?.length).length, 'its run, drawn');
+  // A Turing machine on the canvas can take it as a block, as it can a listing.
+  const menu = findAll(host, n => n.classList?.contains('lib-more-menu'))[0];
+  const insert = findAll(menu, n => n.tagName === 'BUTTON' && /Insert into my TM as a block/.test(textOf(n)))[0];
+  assert.ok(insert, textOf(menu));
+  const before = (context.App.blocks || []).length;
+  insert._listeners.click({});
+  assert.equal((context.App.blocks || []).length, before + 1);
+});
+
+test('the Entrance shows how a machine is a number, and the volumes a reader kept', async () => {
+  seedTab();
+  for (const r of await context.listMyLibrary()) await context.removeFromMyLibrary(r.id);
+  context.renderLibraryView();
+  context.go('babel', null, { reset: true });
+  const host = context.document.getElementById('lib-content');
+  let page = textOf(host);
+  assert.match(page, /How a machine is a number/);
+  assert.match(page, /1 \+ 16 \+ 24 \+ 72 \+ 216 \+ 648 \+ 0 =/);
+  assert.match(page, /works offline/);
+  assert.doesNotMatch(page, /Your volumes/, 'nothing kept, no shelf');
+  context.go('babel-volume', 'dfa-3-2/977');
+  findAll(host, n => n.tagName === 'BUTTON' && textOf(n) === 'Save')[0]._listeners.click({});
+  await new Promise(r => setTimeout(r, 30));
+  context.go('babel');
+  page = textOf(host);
+  assert.match(page, /Your volumes/);
+  assert.match(page, /DFA № 1,537/);
+  for (const r of await context.listMyLibrary()) await context.removeFromMyLibrary(r.id);
 });
 
 test('a room draws its map and its plates, and the Wings page its grid', async () => {
