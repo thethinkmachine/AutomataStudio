@@ -515,6 +515,23 @@ test('regex parser rejects trailing junk instead of silently truncating', () => 
   assert.throws(() => h.context.parseRE('(ab))'), /Unexpected token '\)'/);
 });
 
+test('regex parser refuses an empty alternative and a quantifier with nothing to repeat', () => {
+  // Each of these used to read its | or * as a letter.
+  const h = createHarness();
+  for (const re of ['a||b', '|a', 'a|', '(|b)']) assert.throws(() => h.context.parseRE(re), /alternative is empty|Unexpected end/, re);
+  for (const re of ['*a', '+a', '?a', '{2}a', '(*)']) assert.throws(() => h.context.parseRE(re), /Nothing for/, re);
+});
+
+test('∅ is the empty language, not a letter', () => {
+  const h = createHarness();
+  const run = (re, w) => { const nfa = h.context.thompsonBuild(re); return runGenericNFA({ startId: nfa.start, transitions: nfa.trans, accepts: [nfa.accept] }, w); };
+  assert.equal(run('∅', ''), false);
+  assert.equal(run('a∅', 'a'), false);
+  assert.equal(run('∅|a', 'a'), true);
+  assert.equal(run('∅*', ''), true, '∅* is {ε}');
+  assert.equal(h.context.thompsonBuild('∅|a').trans.some(t => t.sym === '∅'), false);
+});
+
 test('Thompson construction preserves epsilon language for optional regex', () => {
   const h = createHarness();
   const nfa = h.context.thompsonBuild('a?');

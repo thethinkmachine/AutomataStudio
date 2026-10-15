@@ -64,6 +64,9 @@ export function parseRE(re) {
     if (pos >= re.length) throw new Error('Unexpected end');
     const ch = re[pos];
     if (ch === ')') throw new Error("Unexpected ')'");
+    // These used to be read as letters: a||b had a letter |, *a a letter *.
+    if (ch === '|') throw new Error(`An alternative is empty: write ${App.config.sym.eps} for the empty word`);
+    if ('*+?{'.includes(ch)) throw new Error(`Nothing for '${ch}' to repeat`);
     if (ch === '(') {
       pos++;
       const r = parseUnion();
@@ -72,6 +75,7 @@ export function parseRE(re) {
       return r;
     }
     if (ch === App.config.sym.eps) { pos++; return { t: 'eps' }; }
+    if (ch === '∅') { pos++; return { t: 'empty' }; }
     if (ch === '.') { pos++; return { t: 'any' }; }
     if (ch === '[') return parseClass();
     pos++;
@@ -135,7 +139,7 @@ function expandBound({ c, min, max }) {
 }
 
 const KIND_LABELS = {
-  lit: 'LITERAL', eps: 'EPSILON', union: 'UNION (|)', cat: 'CONCAT', star: 'KLEENE *',
+  lit: 'LITERAL', eps: 'EPSILON', empty: 'EMPTY (∅)', union: 'UNION (|)', cat: 'CONCAT', star: 'KLEENE *',
   plus: 'ONE-OR-MORE +', opt: 'OPTIONAL ?', class: 'CHAR CLASS', bound: 'BOUND {n,m}', any: 'ANY (.)'
 };
 
@@ -166,6 +170,11 @@ export function buildThompson(ast, steps = null) {
         const s = fresh(), e = fresh();
         return say('eps', { states: [s, e], trans: [{ from: s, sym: eps, to: e }], start: s, accept: e },
           html`Create epsilon fragment: ${s} —ε→ ${e}<span class="step-sub">2 states, 1 ε-transition · start: ${s}, accept: ${e}<br>Matches the empty string — no input consumed</span>`);
+      }
+      case 'empty': {
+        const s = fresh(), e = fresh();
+        return say('empty', { states: [s, e], trans: [], start: s, accept: e },
+          html`Create empty fragment: ${s} and ${e}, unconnected<span class="step-sub">2 states, no transitions · start: ${s}, accept: ${e}<br>Matches nothing: the accept state cannot be reached</span>`);
       }
       case 'cat': {
         const L = build(node.l), R = build(node.r);
@@ -201,6 +210,107 @@ export function buildThompson(ast, steps = null) {
     }
   }
   return build(ast);
+}
+
+// A symbol the parser cannot take as one character — a word, or a character
+// outside the BMP, which it would split into two halves — stands in its text
+// as a private-use character, one each.
+const CODE_FIRST = 0xE000, CODE_LAST = 0xF8FF;
+
+// Concatenation as written: the panel's ·, and the ⋅ and ∙ that LaTeX's \cdot
+// and a word processor make of it.
+const DOT = /[·⋅∙]/;
+
+// What may follow a closing bracket as its quantifier, in the panel's notation.
+const AFTER_CLOSE = /^(?:\*|\+|\?|\{\d+(?:,\d*)?\})/;
+
+/**
+ * The notation the app writes (the Language panel, `automata to-regex`) as the
+ * parser reads it: · is concatenation, spaces are layout (the panel sets | and
+ * its factors apart with them), the wildcard Σ is "any letter", and ∅ is the
+ * empty language. `sigma`, when given, is what "any letter" ranges over;
+ * without it `.` keeps its printable-ASCII range.
+ *
+ * The panel writes every concatenation with a ·, because a symbol can be a
+ * whole word (citizenFilesComplaint·officerClaims). So a text with a · in it —
+ * or read against a Σ with a word in it — is read the way the panel writes
+ * it, `mode: 'words'`:
+ *
+ *   • ( ) | and the separators (spaces, ·) split it into runs, and a run is
+ *     one symbol: 1·+·1 is three symbols, c++ is one;
+ *   • a run is ε, Σ or ∅ only when that is all it is, so ε2 is a symbol;
+ *   • a trailing * is a star, since the panel writes a single letter's star as
+ *     a* — the only quantifier it ever puts after a symbol;
+ *   • * + ? and {n,m} directly after a ) (spaces allowed, a · not) quantify
+ *     the bracket: (a·b)+, (coin·push){2}. Anywhere else they are symbols.
+ *
+ * Otherwise it is the textbook notation, `mode: 'letters'`: one character to a
+ * letter, so abb is three. Either way a symbol the parser cannot hold as one
+ * character stands in `src` as a private-use one, and `symbolOf` turns a
+ * symbol of the built NFA back into what was written.
+ *
+ * What the panel cannot write unambiguously, this cannot read: a symbol with a
+ * space, a ·, a bracket or a | in it, one ending in *, and — with no · at all
+ * — an expression whose symbols are words (coin | push reads as letters).
+ * → { src, empty, mode, symbolOf }
+ */
+export function readWrittenRegex(text, { sigma = null } = {}) {
+  const { eps, any } = App.config.sym;
+  const raw = String(text);
+  const codes = new Map(), named = new Map();
+  const code = w => {
+    if (!codes.has(w)) {
+      const at = CODE_FIRST + codes.size;
+      if (at > CODE_LAST) throw new Error(`More than ${CODE_LAST - CODE_FIRST + 1} different symbols`);
+      const ch = String.fromCharCode(at);
+      codes.set(w, ch);
+      named.set(ch, w);
+    }
+    return codes.get(w);
+  };
+  const symbolOf = s => named.get(s) ?? s;
+  const one = s => (s.length === 1 ? s : code(s));
+  const anyLetter = sigma && sigma.length ? `(${sigma.map(one).join('|')})` : '.';
+
+  if (!DOT.test(raw) && !(sigma || []).some(s => [...s].length > 1)) {
+    let src = '', inClass = false;
+    for (const c of raw.replace(/\s+/g, '')) {
+      if (c === '[') inClass = true;
+      if (c === ']') inClass = false;
+      src += c === any || (c === '.' && !inClass) ? (inClass ? '.' : anyLetter) : one(c);
+    }
+    return { src, empty: src === '∅', mode: 'letters', symbolOf };
+  }
+
+  let src = '', run = '', afterClose = false;
+  const flush = () => {
+    if (!run) return;
+    if (afterClose) {
+      for (let m; (m = AFTER_CLOSE.exec(run));) { src += m[0]; run = run.slice(m[0].length); }
+    }
+    let stars = '';
+    while (run.length > 1 && run.endsWith('*')) { stars += '*'; run = run.slice(0, -1); }
+    if (run) src += run === eps || run === '∅' ? run : run === any ? anyLetter : code(run);
+    src += stars;
+    run = '';
+    afterClose = false;
+  };
+  for (const c of raw) {
+    if (c === '(' || c === ')' || c === '|') {
+      flush();
+      src += c;
+      afterClose = c === ')';
+    } else if (DOT.test(c)) {
+      flush();
+      afterClose = false;
+    } else if (/\s/.test(c)) {
+      flush();
+    } else {
+      run += c;
+    }
+  }
+  flush();
+  return { src, empty: src === '∅', mode: 'words', symbolOf };
 }
 
 export function thompsonBuild(re) {

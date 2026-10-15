@@ -18,7 +18,7 @@ import { aMachine } from './grammar.mjs';
 import { App } from '../js/core/state.js';
 import { subsetSide, withMachine } from '../js/exercise/grade.js';
 import { minimalDfaOf } from '../js/library/analyze.js';
-import { thompsonBuild } from '../js/algorithms/thompson.js';
+import { readWrittenRegex, thompsonBuild } from '../js/algorithms/thompson.js';
 import { deriveRegex } from '../js/canvas/render.js';
 import { CliError } from './errors.mjs';
 
@@ -278,43 +278,33 @@ export function epsilonFree(target) {
 /**
  * A regular expression → an ε-NFA by Thompson's construction, the app's own
  * parser (|, concatenation, * + ?, {n,m}, [classes], ε). `.` and negated
- * classes range over printable ASCII unless `sigma` names the alphabet.
+ * classes range over printable ASCII unless `sigma` names the alphabet. With a
+ * · in it, the text is the panel's notation and its symbols can be words.
  */
 export function fromRegex(re, { sigma = null } = {}) {
-  const sym0 = App.config.sym;
-  // The notation the app writes (the Language panel, to-regex) reads back:
-  // · is concatenation, the spaces around | are layout, the wildcard is "any
-  // letter", and ∅ is the empty language. A symbol is one character here, so
-  // none of these can be a letter.
-  let src = String(re).replace(/·/g, '').replace(/\s+/g, '').split(sym0.any).join('.');
-  if (src === '∅') {
+  // The notation the app writes (the Language panel, to-regex) reads back,
+  // word symbols included.
+  let written, nfa;
+  try {
+    written = readWrittenRegex(re, { sigma });
+    if (!written.empty) nfa = thompsonBuild(written.src);
+  } catch (e) { throw new CliError(`The regular expression could not be read: ${e.message}.`); }
+  if (written.empty) {
     const empty = blankTarget('ε-NFA', sigma || [], {});
     empty.states = [{ id: 's0', name: 's0' }];
     empty.startId = 's0';
     return empty;
   }
-  if (sigma && sigma.length) {
-    // '.' outside a class is "any letter of Σ".
-    let out = '', inClass = false;
-    for (const c of src) {
-      if (c === '[') inClass = true;
-      if (c === ']') inClass = false;
-      out += c === '.' && !inClass ? `(${sigma.join('|')})` : c;
-    }
-    src = out;
-  }
-  let nfa;
-  try { nfa = thompsonBuild(src); }
-  catch (e) { throw new CliError(`The regular expression could not be read: ${e.message}.`); }
   const sym = App.config.sym;
+  const symbolOf = t => (t.sym === sym.eps ? t.sym : written.symbolOf(t.sym));
   const letters = new Set(sigma || []);
-  for (const t of nfa.trans) if (t.sym !== sym.eps) letters.add(t.sym);
+  for (const t of nfa.trans) if (t.sym !== sym.eps) letters.add(symbolOf(t));
   const out = blankTarget('ε-NFA', [...letters].sort(), {});
   const ids = new Map(nfa.states.map((s, i) => [s, `s${i}`]));
   out.states = nfa.states.map((s, i) => ({ id: `s${i}`, name: `s${i}` }));
   out.startId = ids.get(nfa.start);
   out.accepts = [ids.get(nfa.accept)];
-  out.transitions = nfa.trans.map((t, i) => ({ id: `t${i + 1}`, from: ids.get(t.from), to: ids.get(t.to), symbol: t.sym }));
+  out.transitions = nfa.trans.map((t, i) => ({ id: `t${i + 1}`, from: ids.get(t.from), to: ids.get(t.to), symbol: symbolOf(t) }));
   return out;
 }
 
