@@ -320,6 +320,126 @@ test('the Finder refuses a programmer\'s regex rather than reading its punctuati
   assert.equal(plain.notes, undefined);
 });
 
+test('the Finder reads the notation the Language panel writes', () => {
+  // · is concatenation and spaces are layout: neither is a letter. This is
+  // binary numerals divisible by 5, as state elimination writes it.
+  const written = '0* | ((0*·1·(1·0)*·(0 | 1·1))·((0·1*·0·1 | ((1·0*·1 | 0·1*·0·0)·(1·0)*)·(0 | 1·1))*))·1·0*';
+  const f = findVolume(written);
+  assert.equal(f.address, 'dfa-5-2/293093761');
+  assert.deepEqual(f.names.sigma, ['0', '1']);
+  assert.equal(f.address, findVolume(written.replace(/[·\s]/g, '')).address);
+  // Σ is any letter the expression names; ∅ names none.
+  const sigma = findVolume('Σ*·a·b·b');
+  assert.equal(sigma.address, findVolume('(a|b)*abb').address);
+  assert.match(sigma.notes.join(' '), /Σ was read as any of its letters: a, b/);
+  assert.equal(findVolume('∅').kind, 'error');
+  assert.equal(findVolume('Σ*').kind, 'error');
+
+  // Every volume of dfa-2-2: what the panel writes for it finds its minimal
+  // DFA — when the expression still names both letters, since a letter the
+  // language never needs is not in the expression's alphabet.
+  const dfa = wingByKey('dfa');
+  let compared = 0;
+  for (let v = 0n; v < roomShape(dfa, [2, 2]).total; v++) {
+    const { body, doc } = openVolume({ key: 'dfa', params: [2, 2], volume: v });
+    const re = withVolumeLoaded(doc, () => context.deriveRegex());
+    const back = findVolume(re);
+    if (re === '∅' || re === 'ε') { assert.equal(back.kind, 'error', re); continue; } // no letters, no alphabet
+    assert.equal(back.kind, 'volume', re);
+    if (back.params[1] !== 2) continue;
+    const min = minimiseDfa(dfaOf('DFA', [2, 2], body));
+    assert.equal(back.volume, volumeNumber(dfa, [min.n, 2], [Array.from(min.acc), Array.from(min.delta)]), `${v}: ${re}`);
+    // The same machine over word symbols: the panel writes them with a ·
+    // between, and the Finder reads each back as one letter.
+    const worded = withVolumeLoaded(withReaderNames(doc, { sigma: ['coin', 'push'] }), () => context.deriveRegex());
+    if (worded.includes('·')) {
+      const w = findVolume(worded);
+      assert.equal(w.volume, back.volume, `${v}: ${worded}`);
+      assert.deepEqual(w.names.sigma, ['coin', 'push']);
+    }
+    compared++;
+  }
+  assert.ok(compared >= 32, `${compared} of 64 compared`);
+});
+
+test('with a · in it, a symbol is a whole word', () => {
+  // Sorted, the words are a … e, so this is a·(b·c)*·(e | d).
+  const f = findVolume('fileComplaint·(needEvidence·resubmit)*·(verdictValid | verdictRejected)');
+  assert.equal(f.address, findVolume('a(bc)*(e|d)').address);
+  assert.deepEqual(f.names.sigma, ['fileComplaint', 'needEvidence', 'resubmit', 'verdictRejected', 'verdictValid']);
+  const sigma = findVolume('Σ*·coin·push');
+  assert.equal(sigma.address, findVolume('(a|b)*ab').address);
+  assert.match(sigma.notes.join(' '), /any of its letters: coin, push/);
+  // Without one it is the textbook notation, where abb is three letters —
+  // and when the text looks like the panel's, the page says which reading won.
+  assert.deepEqual(findVolume('(a|b)*abb').names.sigma, ['a', 'b']);
+  assert.deepEqual(findVolume('coin | push').names.sigma, ['c', 'h', 'i', 'n', 'o', 'p', 's', 'u']);
+  assert.match(findVolume('coin | push').notes.join(' '), /one character to a letter/);
+});
+
+test('the panel\'s notation: what is an operator, and what is a symbol', () => {
+  const sigmaOf = q => findVolume(q).names.sigma;
+  const same = (a, b) => assert.equal(findVolume(a).address, findVolume(b).address, `${a} ≡ ${b}`);
+  // An operator standing alone between separators is a symbol: a calculator's +.
+  assert.deepEqual(sigmaOf('1·+·1'), ['+', '1']);
+  assert.deepEqual(sigmaOf('2·*·3'), ['*', '2', '3']);
+  assert.deepEqual(sigmaOf('(? | y·y)'), ['?', 'y']);
+  assert.deepEqual(sigmaOf('(a·b)·*'), ['*', 'a', 'b']);
+  // ε, Σ and ∅ are operators only as a whole run, and only * comes off a word.
+  assert.deepEqual(sigmaOf('c++·d'), ['c++', 'd']);
+  assert.deepEqual(sigmaOf('ε2·e'), ['e', 'ε2']);
+  assert.deepEqual(sigmaOf('Σ1·b'), ['b', 'Σ1']);
+  same('coin*·push', 'a*b');
+  // + ? {n,m} and * quantify a bracket they follow, spaces allowed, a · not.
+  same('(a·b)+', '(ab)+');
+  same('(a·b)?·c', '(ab)?c');
+  same('(coin·push){2}', '(ab){2}');
+  same('(a·b) *', '(ab)*');
+  // ∅ is the empty language anywhere in an expression, never a letter.
+  same('∅ | coin·push', 'a·b');
+  assert.deepEqual(sigmaOf('coin·∅'), ['coin']);
+  // Brackets, dots and braces inside a run are part of the symbol.
+  assert.deepEqual(sigmaOf('x[1]·x[2]'), ['x[1]', 'x[2]']);
+  assert.deepEqual(sigmaOf('v1.2·v1.3'), ['v1.2', 'v1.3']);
+  // LaTeX's \cdot and a word processor's bullet operator are the panel's ·.
+  same('a⋅b', 'ab');
+  same('a∙b', 'ab');
+  // Stray operators are refused, never read as letters.
+  for (const q of ['a||b', '|a', '*a', 'a·(|b)']) assert.equal(findVolume(q).kind, 'error', q);
+  // A programmer's regex is refused, or read, before any word is: anchors and
+  // (?:…) work in the panel's notation, and a backslash cannot hide in a word.
+  same('^coin·push$', 'a·b');
+  same('(?:coin)·push', 'a·b');
+  assert.equal(findVolume(`a${'\\'}1·b`).refused, true);
+  assert.equal(findVolume('(?i)a').refused, true);
+  assert.equal(findVolume('[^a]b').kind, 'volume', 'a negated class is not an anchor');
+  // A letter outside the BMP is one letter, not two halves of a surrogate pair.
+  assert.deepEqual(sigmaOf('🙂*🙃'), ['🙂', '🙃']);
+  assert.deepEqual(sigmaOf('🙂*·🙃'), ['🙂', '🙃']);
+});
+
+test('symbols named like operators survive the panel and come back', () => {
+  // The panel's expression for a machine finds that machine's minimal DFA,
+  // drawn with the same names, whenever the expression has a · to read by.
+  const dfa = wingByKey('dfa');
+  for (const names of [['+', '*'], ['c++', 'ε2'], ['🙂', '🙃'], ['Σ1', '.']]) {
+    let compared = 0;
+    for (let v = 0n; v < roomShape(dfa, [2, 2]).total; v++) {
+      const named = withReaderNames(openVolume({ key: 'dfa', params: [2, 2], volume: v }).doc, { sigma: names });
+      const re = withVolumeLoaded(named, () => context.deriveRegex());
+      if (!re.includes('·')) continue;
+      const f = findVolume(re);
+      assert.equal(f.kind, 'volume', re);
+      const r = locateDocument(named);
+      if (f.params[1] !== r.params[1]) continue;
+      const min = minimiseDfa(dfaOf('DFA', r.params, r.body));
+      assert.equal(f.volume, volumeNumber(dfa, [min.n, r.params[1]], [Array.from(min.acc), Array.from(min.delta)]), `${names}: ${re}`);
+      compared++;
+    }
+    assert.ok(compared >= 30, `${names}: ${compared} compared`);
+  }
+});
+
 test('a partial DFA is read with a sink, and says so', () => {
   const doc = { machine: 'DFA', states: [{ id: 'p' }, { id: 'q' }], startId: 'p', accepts: ['q'], sigma: ['a'], transitions: [{ id: 't', from: 'p', to: 'q', symbol: 'a' }] };
   const r = locateDocument(doc);

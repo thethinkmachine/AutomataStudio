@@ -84,9 +84,19 @@ test('complement, products and the regular operations mean what they say, word b
 test('regex round-trips through state elimination', () => {
   for (const re of ['(a|b)*abb', 'a*b*', '(ab|ba)*', 'a(a|b)*a|a']) {
     const m = fromRegex(re);
-    const back = fromRegex(toRegex(minimize(m)).replace(/·/g, '').replace(/\s/g, '').replace(/Σ/g, '(a|b)'), { sigma: ['a', 'b'] });
+    const back = fromRegex(toRegex(minimize(m)), { sigma: ['a', 'b'] });
     assert.equal(same(m, back), true, re);
   }
+  // With a · the panel's symbols are words, and they come back as words.
+  const words = fromRegex('coin·(push·coin)*');
+  assert.deepEqual(words.sigma, ['coin', 'push']);
+  assert.equal(same(minimize(words), minimize(fromRegex(toRegex(minimize(words))))), true);
+  // A Σ with a word in it reads the panel's notation even with no · to say so.
+  assert.deepEqual(fromRegex('coin | push', { sigma: ['coin', 'push'] }).sigma, ['coin', 'push']);
+  assert.deepEqual(fromRegex('Σ·a', { sigma: ['coin', 'a'] }).sigma, ['a', 'coin']);
+  assert.deepEqual(fromRegex('🙂*').sigma, ['🙂']);
+  assert.deepEqual(fromRegex('a·∅').sigma, ['a']);
+  assert.throws(() => fromRegex(Array.from({ length: 6401 }, (_, i) => 'w' + i).join('·')), /More than 6400 different symbols/);
 });
 
 test('counting words matches brute force, and sampling is uniform', () => {
