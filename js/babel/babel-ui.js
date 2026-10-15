@@ -55,7 +55,7 @@ import { asSketchDfa, dfaOf, firstWords, languageClass, minimiseDfa, weakViolati
 import { endlessSpelling, finiteTiles, neighbours, nudge, conventionsOf } from './spell.js';
 import { askBabel } from './babel-client.js';
 import { deepMapView, resetDeepMapsForTests } from './deep-map-ui.js';
-import { samplesFor } from './deep-map.js';
+import { MAX_LEVELS, deepLayout, samplesFor } from './deep-map.js';
 import { findVolume, volumeNamedBy } from './find.js';
 import { openVolume, randomVolume, roomId, roomShape, roomTotal, roomsOfWeight, seededBelow, wingCountUpTo, wingNumberOf } from './volumes.js';
 import { WINGS, letterName, roomProblem, wingByKey, wingIsFinite, wingOf, withReaderNames } from './wings.js';
@@ -85,6 +85,11 @@ export function resetBabelUiForTests() {
   B.from.clear(); B.zoom.clear(); B.lit.clear(); B.canonicalOnly = false; B.wingRoom.clear(); B.verdicts.clear();
   B.census.clear(); B.active = null; B.current = null;
   resetDeepMapsForTests();
+}
+
+/** The census reading cells now, by key, or null: tests check a page stops the last one. */
+export function activeCensusForTests() {
+  return B.active;
 }
 
 /** Which rail item a Babel page lights up. */
@@ -788,7 +793,12 @@ function pageRoom(id) {
       h('span', { class: 'bab-room-count', title: range ? `${groupDigits(shape.total)} volumes: ${wing.type} № ${groupDigits(range.lo)} to № ${groupDigits(range.hi)}` : 'An endless room: its volumes are ordered by size' },
         shape.finite ? `${shape.total.toString().length > 15 ? shortCount(shape.total) : groupDigits(shape.total)} volumes` : `∞ · ${[0, 1, 2, 3].map(s => groupDigits(shape.count(s))).join(', ')}, … by size`)),
     views));
-  if (B.view !== 'plates' && shape.finite) {
+  // A finite room too deep to fly through has no deep layout and keeps the census map.
+  const deep = B.view !== 'plates' && shape.finite && deepLayout(wing, params);
+  if (deep) {
+    // The deep map reads its own tiles: a census left active (an endless room
+    // just visited) would otherwise go on reading the whole of its room.
+    B.active = null;
     const vc = screenCensus(wing, params);
     page.append(censusBar(vc));
     page.append(deepRoomMap(wing, params, vc));
@@ -797,6 +807,7 @@ function pageRoom(id) {
   const c = censusOf(wing, params);
   page.append(censusBar(c));
   page.append(B.view === 'plates' ? roomPlates(wing, params, c) : roomMap(c));
+  if (B.view !== 'plates' && shape.finite) page.append(h('p', { class: 'bab-deep-how', text: `Too deep to fly through (more than ${groupDigits(MAX_LEVELS)} levels): this room’s map zooms a click at a time` }));
   startCensus(c);
   return page;
 }

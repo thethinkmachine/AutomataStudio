@@ -50,6 +50,7 @@ export const UNKNOWN = 254;
 const FAN_TARGET = 100;   // children a level aims for
 const FAN_MAX = 1024;     // and never exceeds
 const NARROW = 256;       // a huge digit is narrowed this many ways a level
+export const MAX_LEVELS = 2500;  // the deepest room the map flies through (about 0.25 s to lay out)
 
 /**
  * How many machines colour a block. Five for finite automata and ω-automata,
@@ -78,16 +79,23 @@ export function deepLayout(wing, params) {
   if (layout) return layout;
   const shape = roomShape(wing, params);
   if (!shape.finite) return null;
-  layout = buildLayout(wing, params, shape, id);
+  // Building a layout costs the square of its depth (a prefix product per
+  // digit, and every level's names against every digit): 0.15 s at 2,000
+  // levels, 3 s at 8,000, out of memory at dfa-300-300's 90,000. A room
+  // deeper than a reader could fly through takes the census map instead.
+  const radices = (shape.radices ? shape.radices() : [shape.total]).map(BigInt).filter(r => r > 1n);
+  const depth = radices.reduce((s, r) => s + (r < 1n << 53n ? Math.log10(Number(r)) : bigLog10(r)), 0) / Math.log10(FAN_TARGET);
+  if (depth > MAX_LEVELS) return null;
+  layout = buildLayout(wing, params, shape, id, radices);
+  if (!layout) return null;
   if (layouts.size > 64) layouts.clear();
   layouts.set(id, layout);
   return layout;
 }
 
-function buildLayout(wing, params, shape, id) {
+// `radices` leaves out digits with one value: they say nothing and would make empty levels.
+function buildLayout(wing, params, shape, id, radices) {
   const total = shape.total;
-  // Digits with one value say nothing and would make empty levels.
-  const radices = (shape.radices ? shape.radices() : [total]).map(BigInt).filter(r => r > 1n);
   const places = [1n];
   for (const r of radices) places.push(places[places.length - 1] * r);
   const placeIndex = new Map(places.map((p, k) => [p, k]));
@@ -138,6 +146,10 @@ function buildLayout(wing, params, shape, id) {
     i -= 1;
     m = radices[i];
   }
+  // A layout that stops short of single volumes would call its last level's
+  // blocks volumes. The depth estimate keeps this from happening; if it ever
+  // does, there is no deep map rather than a wrong one.
+  if (sizes[sizes.length - 1] > 1n) return null;
 
   const W = [1n], H = [1n];
   levels.forEach((lv, l) => { W.push(W[l] * lv.colsB); H.push(H[l] * lv.rowsB); });

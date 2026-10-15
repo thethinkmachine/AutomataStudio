@@ -9,9 +9,9 @@ import { bits, fin, tuple } from '../js/babel/shape.js';
 import { WINGS, roomProblem, roomShape, wingByKey } from '../js/babel/wings.js';
 import { cellClassesOf, classifyVolume } from '../js/babel/census.js';
 import { handleBabelMessage } from '../js/babel/babel-worker-core.js';
-import { resetBabelUiForTests } from '../js/babel/babel-ui.js';
+import { activeCensusForTests, resetBabelUiForTests } from '../js/babel/babel-ui.js';
 import {
-  MAP_FLOOR, MAP_MAX_CELL, VOID, blockAt, cellAt, cellOfVolume, deepLayout, depthOf, depthRange, fitCamera,
+  MAP_FLOOR, MAP_MAX_CELL, MAX_LEVELS, VOID, blockAt, cellAt, cellOfVolume, deepLayout, depthOf, depthRange, fitCamera,
   makeCamera, mapClassifier, panBy, readTile, samplesFor, samplesOf, visibleTiles, zoomAt
 } from '../js/babel/deep-map.js';
 
@@ -248,4 +248,28 @@ test('a finite room’s map is the deep map, and its bar counts what is on scree
   context.go('babel-room', 'counter-2-2', { reset: true });
   assert.equal(findAll(host, n => n.classList?.contains('bab-deep')).length, 0);
   assert.equal(findAll(host, n => n.classList?.contains('bab-map')).length, 1);
+  // Back to a finite room: the endless room's census stops reading.
+  assert.notEqual(activeCensusForTests(), null);
+  context.go('babel-room', 'dfa-3-2', { reset: true });
+  assert.equal(activeCensusForTests(), null);
+});
+
+test('a room too deep to fly through has no deep layout, and its page keeps the census map', () => {
+  // dfa-300-300 is 90,000 levels deep: its layout ran out of memory.
+  const started = performance.now();
+  assert.equal(deepLayout(wingByKey('dfa'), [300, 300]), null);
+  assert.equal(handleBabelMessage({ id: 1, key: 'dfa', params: [300, 300], type: 'tile', level: 0, tx: '0', ty: '0', samples: 1 }).type, 'failed');
+  assert.ok(performance.now() - started < 5000);
+  // Just inside the line, every level reaches single volumes.
+  const L = deepLayout(wingByKey('dfa'), [100, 20]);
+  assert.ok(L.D > 2000 && L.D <= MAX_LEVELS);
+  assert.equal(L.sizes[L.D], 1n);
+  seedTab();
+  resetBabelUiForTests();
+  context.renderLibraryView();
+  context.go('babel-room', 'dfa-120-50', { reset: true });
+  const host = context.document.getElementById('lib-content');
+  assert.equal(findAll(host, n => n.classList?.contains('bab-deep')).length, 0);
+  assert.equal(findAll(host, n => n.classList?.contains('bab-map')).length, 1);
+  assert.match(textOf(host), /Too deep to fly through/);
 });
