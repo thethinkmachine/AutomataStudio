@@ -12,10 +12,10 @@
 //
 // It measures the app's own code — js/machines/** and the renderer, loaded
 // through tests/harness.js exactly as the tests load them — not a copy of it.
-// Eight suites (bench/cases.mjs): deciding a word on every machine type, the
+// Nine suites (bench/cases.mjs): deciding a word on every machine type, the
 // searches, reading input, the player's cost per step, the player's memory per
 // step, the JavaScript half of drawing the canvas, the space-time diagram, and
-// the memory of a whole long run (BB(5) to its halt).
+// the memory of a whole long run (BB(5) to its halt), and the Babel deep map.
 //
 // **It is run by hand and never gates CI.** Timings move with the machine, the
 // power plan and whatever else is running; a build that failed on them would

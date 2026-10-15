@@ -555,11 +555,11 @@ test('a 1,000-state DFA has a volume, and it comes back quickly', () => {
 
 // ── Boundaries ────────────────────────────────────────────────────
 
-test('the engine imports no page: only babel-ui.js, find.js and babel-client.js reach past it', () => {
+test('the engine imports no page: only babel-ui.js, deep-map-ui.js, find.js and babel-client.js reach past it', () => {
   const dir = join(import.meta.dirname, '..', 'js', 'babel');
   const allowed = /^(\.\/|\.\.\/machines\/|\.\.\/core\/state\.js$)/;
   for (const f of readdirSync(dir)) {
-    if (['babel-ui.js', 'find.js'].includes(f)) continue;
+    if (['babel-ui.js', 'deep-map-ui.js', 'find.js'].includes(f)) continue;
     const src = readFileSync(join(dir, f), 'utf8');
     for (const m of src.matchAll(/^import[^'"]*['"]([^'"]+)['"]/gm)) {
       assert.match(m[1], allowed, `${f} imports ${m[1]}`);
