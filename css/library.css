@@ -1013,6 +1013,7 @@
 .bab-reading-cls { display: inline-flex; align-items: center; gap: 7px; margin-top: 4px; font-size: .82rem; color: var(--text); }
 .bab-reading-says { font-family: var(--serif); font-style: italic; font-size: 1.04rem; color: var(--text); overflow-wrap: anywhere; }
 .bab-reading-note { font-size: .72rem; color: var(--text3); }
+.bab-reading-num.is-long { font-size: 1.2rem; line-height: 1.25; }
 .bab-reading-of { margin-left: 4px; font-family: var(--mono); font-size: .68rem; color: var(--text3); }
 .bab-reading-strip { display: inline-flex; gap: 3px; margin-top: 2px; }
 .bab-reading-strip .bab-swatch { width: 9px; height: 14px; border-radius: 2px; }

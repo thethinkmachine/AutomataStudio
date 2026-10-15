@@ -90,26 +90,40 @@ function buildLayout(wing, params, shape, id) {
   const radices = (shape.radices ? shape.radices() : [total]).map(BigInt).filter(r => r > 1n);
   const places = [1n];
   for (const r of radices) places.push(places[places.length - 1] * r);
+  const placeIndex = new Map(places.map((p, k) => [p, k]));
 
   // Block sizes from the top: sizes[0] is the room, sizes[D] is one volume.
+  // Each level is laid out as it is chosen, because its grid depends on the
+  // shape of the cells it cuts: `asp` is their width over their height.
+  const sizes = [total], levels = [], aspect = [1];
+  let asp = 1;
+  const pushLevel = child => {
+    const S = sizes[sizes.length - 1];
+    const fan = Number((S + child - 1n) / child);
+    const { cols, rows } = gridFor(fan, placeIndex.get(S), placeIndex.get(child), radices, asp);
+    levels.push({ cols, rows, child, colsB: BigInt(cols), rowsB: BigInt(rows) });
+    asp *= rows / cols;
+    aspect.push(asp);
+    sizes.push(child);
+  };
+
   // The current block is places[i] · m — whole digits below i, and m values
   // of digit i still open (m = 1 when the block is aligned to a digit).
-  const sizes = [total];
   let i = radices.length, m = 1n;
   for (let guard = 0; sizes[sizes.length - 1] > 1n && guard < 100000; guard++) {
     const cur = sizes[sizes.length - 1];
-    if (cur <= BigInt(FAN_MAX)) { sizes.push(1n); break; }
+    if (cur <= BigInt(FAN_MAX)) { pushLevel(1n); break; }
     if (m > BigInt(FAN_MAX)) {
       // Inside a digit too big for one level: narrow it to runs of its values.
       m = (m + BigInt(NARROW) - 1n) / BigInt(NARROW);
-      sizes.push(places[i] * m);
+      pushLevel(places[i] * m);
       continue;
     }
     // Finish the open digit (if any) and take whole digits below while they
     // fit: the fan nearest a hundred, preferring one that fills its grid —
     // a short last row reads as missing volumes at every block's end.
     const score = (j, F) => {
-      const g = gridFor(F, m === 1n ? i : undefined, j, radices);
+      const g = gridFor(F, m === 1n ? i : undefined, j, radices, asp);
       return Math.abs(Math.log(F / FAN_TARGET)) + (g.cols * g.rows === F ? 0 : 0.8);
     };
     let F = Number(m), best = m > 1n ? { j: i, F, score: score(i, F) } : null;
@@ -119,25 +133,14 @@ function buildLayout(wing, params, shape, id) {
       const sc = score(j, F);
       if (!best || sc < best.score) best = { j, F, score: sc };
     }
-    if (best) { i = best.j; m = 1n; sizes.push(places[i]); continue; }
+    if (best) { i = best.j; m = 1n; pushLevel(places[i]); continue; }
     // The next digit down is too big to take whole: open it.
     i -= 1;
     m = radices[i];
   }
 
-  const placeIndex = new Map(places.map((p, k) => [p, k]));
-  const levels = [];
-  const aspect = [1];
   const W = [1n], H = [1n];
-  for (let l = 0; l + 1 < sizes.length; l++) {
-    const S = sizes[l], child = sizes[l + 1];
-    const fan = Number((S + child - 1n) / child);
-    const { cols, rows } = gridFor(fan, placeIndex.get(S), placeIndex.get(child), radices);
-    levels.push({ cols, rows, child, colsB: BigInt(cols), rowsB: BigInt(rows) });
-    aspect.push(aspect[l] * rows / cols);
-    W.push(W[l] * BigInt(cols));
-    H.push(H[l] * BigInt(rows));
-  }
+  levels.forEach((lv, l) => { W.push(W[l] * lv.colsB); H.push(H[l] * lv.rowsB); });
   const layout = {
     id, total, sizes, levels, aspect, W, H,
     D: levels.length,
@@ -148,26 +151,37 @@ function buildLayout(wing, params, shape, id) {
   return layout;
 }
 
+/** How oblong a cell may get: a level's grid always brings it back inside this. */
+const MAX_SKEW = 2.5;
+
 /**
- * A level's grid. When its children are whole digits, split them where the
- * grid comes out squarest — rows from the higher digits, columns from the
- * lower, so a DFA's two moves read as rows and columns. Otherwise the
- * squarest grid that holds them; the last row may run short.
+ * A level's grid, for cells `asp` wide per unit of height. Its rows and
+ * columns are chosen so the children come out as square as they can — not
+ * the grid itself: a room of binary digits split 16 × 8 at every level halves
+ * its cells' width each time, and after a few dozen levels they were
+ * thousands of times taller than wide, too thin for the camera ever to reach
+ * the next level. When the children are whole digits, the split is between
+ * digits — rows from the higher, columns from the lower, so a DFA's two moves
+ * read as rows and columns, and a level's children stay in number order.
+ * Otherwise the grid that holds them nearest square; the last row may run short.
  */
-function gridFor(fan, hiIndex, loIndex, radices) {
-  if (hiIndex !== undefined && loIndex !== undefined && hiIndex - loIndex >= 2) {
+function gridFor(fan, hiIndex, loIndex, radices, asp = 1) {
+  const skewOf = (cols, rows) => Math.abs(Math.log(asp * rows / cols));
+  if (hiIndex !== undefined && loIndex !== undefined && hiIndex > loIndex) {
     let best = null;
-    for (let k = loIndex + 1; k < hiIndex; k++) {
+    for (let k = loIndex; k <= hiIndex; k++) {
       let cols = 1, rows = 1;
       for (let j = loIndex; j < k; j++) cols *= Number(radices[j]);
       for (let j = k; j < hiIndex; j++) rows *= Number(radices[j]);
-      const skew = Math.max(cols / rows, rows / cols);
+      const skew = skewOf(cols, rows);
       if (!best || skew < best.skew) best = { cols, rows, skew };
     }
-    if (best && best.skew <= 2.5) return { cols: best.cols, rows: best.rows };
+    if (best && best.skew <= Math.log(MAX_SKEW)) return { cols: best.cols, rows: best.rows };
   }
-  const cols = Math.ceil(Math.sqrt(fan));
-  return { cols, rows: Math.ceil(fan / cols) };
+  let rows = Math.min(fan, Math.max(1, Math.round(Math.sqrt(fan / asp))));
+  const cols = Math.ceil(fan / rows);
+  rows = Math.ceil(fan / cols);
+  return { cols, rows };
 }
 
 /**
@@ -177,8 +191,11 @@ function gridFor(fan, hiIndex, loIndex, radices) {
  * parts, read as columns and rows.
  */
 function levelPicks(wing, params, shape, layout) {
+  // Only a wing that names its parts (q9 · j, F) has something to say here:
+  // without one, every part is called by its shape ("set"), which tells the
+  // reader nothing.
   let tiles = null;
-  try { tiles = finiteTiles(wing, params, valueAt(shape, 0n).value); } catch { /* unnamed */ }
+  if (wing.tile) try { tiles = finiteTiles(wing, params, valueAt(shape, 0n).value); } catch { /* unnamed */ }
   return layout.levels.map((lv, l) => {
     const hi = layout.sizes[l], lo = lv.child;
     if (!tiles) return { names: [], whole: true };

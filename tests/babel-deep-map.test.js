@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { context, resetApp } from './harness.js';
 import { bits, fin, tuple } from '../js/babel/shape.js';
-import { wingByKey } from '../js/babel/wings.js';
+import { WINGS, roomProblem, roomShape, wingByKey } from '../js/babel/wings.js';
 import { cellClassesOf, classifyVolume } from '../js/babel/census.js';
 import { handleBabelMessage } from '../js/babel/babel-worker-core.js';
 import { resetBabelUiForTests } from '../js/babel/babel-ui.js';
@@ -156,6 +156,28 @@ test('the camera goes fifty levels down and back to the whole room', () => {
   while (cam.L > 1 && steps++ < 4000) zoomAt(cam, L, VIEW, 0.8, 450, 280);
   for (let i = 0; i < 20; i++) zoomAt(cam, L, VIEW, 0.8, 450, 280);
   assert.ok(Math.abs(depthOf(cam, L) - depthRange(L, VIEW).top) < 1e-6, 'zooming out stops at the whole room');
+});
+
+test('every finite room zooms down to single volumes, its cells never more than 2.5 times longer than wide', () => {
+  // An NFA's number is binary digits. Each level used to split its own grid
+  // squarest (16 × 8), halving the cells' width every time; fifty levels down
+  // they were too thin for the camera to reach the next level, and the zoom
+  // went on for ever at the same one.
+  const view = { w: 900, h: 560, inset: 40 };
+  const rooms = [[wingByKey('nfa'), [5, 3]], [wingByKey('nfa'), [10, 10]]];
+  for (const w of WINGS) for (const n of [2, 3]) {
+    const p = w.params.map((q, i) => Math.max(q.min ?? 1, i === 0 ? n : 2));
+    if (!roomProblem(w, p) && roomShape(w, p).finite) rooms.push([w, p]);
+  }
+  for (const [w, p] of rooms) {
+    const L = deepLayout(w, p);
+    for (const a of L.aspect) assert.ok(Math.max(a, 1 / a) <= 2.5 + 1e-9, `${w.type} ${p.join('·')}: a cell ${a.toFixed(2)} wide per unit of height`);
+    const cam = makeCamera(L, view);
+    const bottom = depthRange(L, view).bottom;
+    let n = 0;
+    while (!(cam.L === L.D && Math.abs(depthOf(cam, L) - bottom) < 1e-9) && n++ < 5000) zoomAt(cam, L, view, 1.25, 450, 280);
+    assert.ok(n < 5000, `${w.type} ${p.join('·')} reaches its volumes (stuck at level ${cam.L} of ${L.D})`);
+  }
 });
 
 test('a zoom keeps the point under the pointer, and a pan never leaves the room', () => {

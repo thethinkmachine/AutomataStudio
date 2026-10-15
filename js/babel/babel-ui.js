@@ -887,7 +887,7 @@ function paintDeepReading(pane, wing, params, info) {
     try { const n = wingNumberOf(wing, params, v.volume); if (n.toString().length <= 30) wingNo = `wing № ${groupDigits(n)}`; } catch { /* past the search */ }
     put(
       plateFigure(readerDoc(wing, params, v.doc), { w: 300, h: 160 }),
-      h('div', { class: 'bab-reading-num' }, h('span', { text: `№ ${showNumber(v.volume).text}` })),
+      h('div', { class: `bab-reading-num${showNumber(v.volume).text.length > 14 ? ' is-long' : ''}` }, h('span', { text: `№ ${showNumber(v.volume).text}` })),
       h('span', { class: 'bab-reading-addr', text: `${v.address}${wingNo ? ` · ${wingNo}` : ''}` }),
       cls,
       said ? h('span', { class: 'bab-reading-says', text: `accepts ${said}` }) : null,
