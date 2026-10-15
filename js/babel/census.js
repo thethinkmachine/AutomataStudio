@@ -105,21 +105,8 @@ function cycleThrough(succ, reach, anchor, allow) {
 export function omegaNonEmpty(wing, params, body) {
   const succ = omegaGraph(wing, params, body);
   const reach = reachableFrom(succ, 0);
-  const n = params[0];
-  if (wing.omega === 'parity') {
-    const pr = body[0];
-    for (let q = 0; q < n; q++) {
-      const p = pr[q];
-      if (p % 2 !== 0 || !reach[q]) continue;
-      // A cycle whose least priority is this even p: through q, within priorities ≥ p.
-      if (cycleThrough(succ, reach, x => x === q, x => pr[x] >= p)) return true;
-    }
-    return false;
-  }
+  // Büchi: some reachable accepting state lies on a cycle.
   const acc = body[0];
-  if (wing.omega === 'cobuchi') {
-    return cycleThrough(succ, reach, q => !acc[q], q => !acc[q]);
-  }
   return cycleThrough(succ, reach, q => !!acc[q], () => true);
 }
 

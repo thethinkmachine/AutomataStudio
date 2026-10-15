@@ -7,7 +7,7 @@
 //
 //   • Breadth-first, when every state is reachable from the start and no state
 //     has two edges with the same label to different states — every DFA,
-//     Moore machine and deterministic TM with no unreachable state. States are
+//     DBA and deterministic TM with no unreachable state. States are
 //     numbered in the order a breadth-first walk from the start meets them,
 //     edges taken in label order: the numbering minimalDfaOf already uses, so
 //     a minimal DFA's canonical copy is exactly the table it prints. No
@@ -38,7 +38,7 @@ const SKIP = new Set(['id', 'from', 'to', 'curve', 'loopAngle', 'port', 'symbol'
  * would put a move ahead of the symbol it is a move on.
  */
 function labeller(doc) {
-  const tape = (doc.stackAlpha || []).includes(doc.config?.sym?.blank ?? '⊔') && /TM|LBA/.test(doc.machine);
+  const tape = (doc.stackAlpha || []).includes(doc.config?.sym?.blank ?? '⊔') && /TM/.test(doc.machine);
   const order = tape ? doc.stackAlpha : [...(doc.sigma || []), ...(doc.stackAlpha || [])];
   const rank = new Map();
   order.forEach((s, i) => { if (!rank.has(s)) rank.set(s, i); });

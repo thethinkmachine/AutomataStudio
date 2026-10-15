@@ -24,6 +24,13 @@ import {
 } from './machines.mjs';
 import { retainedBytes, rng } from './measure.mjs';
 
+// The Babel modules load the app's state, which needs Solid's browser build:
+// only a suite process (bench/suite.mjs) runs with it, so the parent — which
+// reads this file for the case names — does not load them.
+const babelMods = process.execArgv.some(a => a.includes('conditions=browser'))
+  ? { ...(await import('../js/babel/wings.js')), ...(await import('../js/babel/deep-map.js')) }
+  : null;
+
 // Searches and two-way heads stop at a configured budget; the benchmark asks
 // how long the work takes, so it lifts the budget out of the way.
 function unbudgeted(App) {
@@ -727,4 +734,52 @@ const horizon = Object.assign([
   }
 ], { rounds: 1 });
 
-export const suites = { decide: [...finiteWords, ...turing], search, tokenize, player, memory, layout, spacetime, horizon };
+// ── the Babel deep map ──────────────────────────────────────────────
+// What a screen of the map costs to read, per machine read (the worker's
+// work), and what a zoom step costs the camera (the main thread's). The
+// check is the sum of the classes read, so a faster classifier that answers
+// differently shows as a changed verdict.
+
+function tileCase(name, key, params, level, samples, at = [3n, 2n]) {
+  return {
+    name, per: 'machine',
+    setup() {
+      const { wingByKey, deepLayout, mapClassifier, readTile } = babelMods;
+      const wing = wingByKey(key), layout = deepLayout(wing, params);
+      const classify = mapClassifier(wing, params);
+      const a = level < 0 ? layout.D + level : level;
+      const [tx, ty] = at;
+      const probe = readTile(layout, a, tx, ty, classify, samples);
+      return {
+        run: () => readTile(layout, a, tx, ty, classify, samples).cells.reduce((s, k) => s + (k === 255 ? 0 : k), 0),
+        count: probe.cells.filter(k => k !== 255).length
+      };
+    }
+  };
+}
+
+const babel = [
+  tileCase('deep map: DFA 10·10 block tile, 5 machines a block', 'dfa', [10, 10], 20, 5),
+  tileCase('deep map: DFA 10·10 bottom tile, one volume a cell', 'dfa', [10, 10], -1, 5),
+  tileCase('deep map: NFA 2·2 room, one tile, through classifyBody', 'nfa', [2, 2], -1, 5, [0n, 0n]),
+  {
+    name: 'deep map: camera, DFA 10·10 room to one volume and back',
+    per: 'zoom step',
+    setup() {
+      const { wingByKey, deepLayout, depthOf, makeCamera, zoomAt } = babelMods;
+      const layout = deepLayout(wingByKey('dfa'), [10, 10]);
+      const view = { w: 900, h: 560, inset: 40 };
+      return {
+        run() {
+          const cam = makeCamera(layout, view);
+          for (let i = 0; i < 540; i++) zoomAt(cam, layout, view, 1.25, 610, 190);
+          for (let i = 0; i < 540; i++) zoomAt(cam, layout, view, 0.8, 300, 400);
+          return depthOf(cam, layout).toFixed(6);
+        },
+        count: 1080
+      };
+    }
+  }
+];
+
+export const suites = { decide: [...finiteWords, ...turing], search, tokenize, player, memory, layout, spacetime, horizon, babel };

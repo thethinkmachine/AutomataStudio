@@ -29,7 +29,7 @@ export const SUBSET_LIMIT = 4096;
  */
 export function dfaOf(type, params, body) {
   const [n, k] = params;
-  if (type === 'DFA' || type === 'DBA' || type === 'DcoBA' || type === 'DWA') {
+  if (type === 'DFA' || type === 'DBA' || type === 'DWA') {
     const [acc, delta] = body;
     return { n, k, delta: Int32Array.from(delta), acc: Uint8Array.from(acc) };
   }
@@ -144,6 +144,56 @@ function liveCycle(t, live) {
   };
   if (live[0]) visit(0);
   return cyclic;
+}
+
+/**
+ * `languageClass` for one room's DFAs, on flat arrays it allocates once: the
+ * returned function takes δ (q·k + a → state) and the accepting states as
+ * 0/1, and allocates nothing. The room map reads thousands of machines a
+ * second through it; tests/babel-deep-map.test.js holds it to languageClass.
+ */
+export function flatLanguageClass(n, k) {
+  const m = n * k;
+  const head = new Int32Array(n), next = new Int32Array(m), from = new Int32Array(m);
+  const liveA = new Uint8Array(n), liveR = new Uint8Array(n), colour = new Uint8Array(n), edge = new Int32Array(n);
+  const stack = new Int32Array(m + n);
+  for (let i = 0; i < m; i++) from[i] = (i / k) | 0;
+  const coReachFlat = (acc, live, want) => {
+    live.fill(0);
+    let sp = 0;
+    for (let q = 0; q < n; q++) if (acc[q] === want) { live[q] = 1; stack[sp++] = q; }
+    while (sp) {
+      const q = stack[--sp];
+      for (let e = head[q]; e >= 0; e = next[e]) { const p = from[e]; if (!live[p]) { live[p] = 1; stack[sp++] = p; } }
+    }
+  };
+  // The same walk as liveCycle: depth first from the start, through live states only.
+  const cyclic = (delta, live) => {
+    if (!live[0]) return false;
+    colour.fill(0);
+    let sp = 0;
+    stack[sp++] = 0; colour[0] = 1; edge[0] = 0;
+    while (sp) {
+      const q = stack[sp - 1];
+      if (edge[q] >= k) { colour[q] = 2; sp--; continue; }
+      const r = delta[q * k + edge[q]++];
+      if (!live[r]) continue;
+      if (colour[r] === 1) return true;
+      if (!colour[r]) { colour[r] = 1; edge[r] = 0; stack[sp++] = r; }
+    }
+    return false;
+  };
+  return (delta, acc) => {
+    head.fill(-1);
+    for (let i = 0; i < m; i++) { const r = delta[i]; next[i] = head[r]; head[r] = i; }
+    coReachFlat(acc, liveA, 1);
+    if (!liveA[0]) return 'e';
+    coReachFlat(acc, liveR, 0);
+    if (!liveR[0]) return 'u';
+    if (!cyclic(delta, liveA)) return 'f';
+    if (!cyclic(delta, liveR)) return 'c';
+    return 'o';
+  };
 }
 
 /** The class of a complete DFA's language: e, u, f, c or o (LANGUAGE_CLASSES). */

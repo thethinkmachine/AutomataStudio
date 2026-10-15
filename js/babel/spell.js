@@ -39,15 +39,13 @@ function topParts(shape, body) {
   return { conventions, offset, parts: [{ shape, value: body, index: 0 }] };
 }
 
-/** The convention a volume was read under, in words — or null when its wing has none. */
-export function conventionsOf(wing, params, body) {
-  const list = [...topParts(roomShape(wing, params), body).conventions];
-  const out = [];
-  if (wing.conventions && list.length) out.push(wing.conventions[list.shift()]);
-  if (wing.store && !wing.explicitOnly && list.length) {
-    out.push(list[0] === 0 ? 'a bottom marker Z, acceptance by final state' : 'acceptance by empty stack');
-  } else if (wing.store) out.push('a bottom marker Z, acceptance by final state');
-  return out;
+/**
+ * The convention a volume is read under, in words: the one-counter automaton's
+ * bottom marker and final states (its wing holds no other). Empty for a wing
+ * with no convention to state.
+ */
+export function conventionsOf(wing) {
+  return wing.store ? ['a bottom marker Z, acceptance by final state'] : [];
 }
 
 /**

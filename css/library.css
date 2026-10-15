@@ -1013,6 +1013,42 @@
 .bab-reading-cls { display: inline-flex; align-items: center; gap: 7px; margin-top: 4px; font-size: .82rem; color: var(--text); }
 .bab-reading-says { font-family: var(--serif); font-style: italic; font-size: 1.04rem; color: var(--text); overflow-wrap: anywhere; }
 .bab-reading-note { font-size: .72rem; color: var(--text3); }
+.bab-reading-num.is-long { font-size: 1.2rem; line-height: 1.25; }
+.bab-reading-of { margin-left: 4px; font-family: var(--mono); font-size: .68rem; color: var(--text3); }
+.bab-reading-strip { display: inline-flex; gap: 3px; margin-top: 2px; }
+.bab-reading-strip .bab-swatch { width: 9px; height: 14px; border-radius: 2px; }
+
+/* The deep map: a finite room from the whole room down to single volumes.
+   The canvas fills a fixed-height well; plates are buttons laid over it, and
+   the depth rail runs down its right edge. */
+.bab-deep-bar { flex-wrap: wrap; align-items: flex-end; gap: 6px 18px; }
+.bab-deep-where { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bab-deep-scale { font-family: var(--mono); font-size: .72rem; color: var(--text2); font-variant-numeric: tabular-nums; }
+.bab-deep-picks { min-height: 1.2em; font-family: var(--mono); font-size: .66rem; color: var(--text3); overflow-wrap: anywhere; }
+.bab-deep-tools { margin-left: auto; display: flex; gap: 16px; }
+.lib-fig.bab-deep-frame { position: relative; aspect-ratio: auto; height: clamp(340px, 62vh, 640px); padding: 0; overflow: hidden; }
+.bab-deep-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.bab-deep-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bab-deep-frame.is-panning .bab-deep-canvas { cursor: grabbing; }
+.bab-deep-frame.is-flying .bab-deep-canvas { cursor: zoom-in; }
+.bab-deep-plates { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+#v-library .bab-deep-plate {
+  all: unset; box-sizing: border-box; position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer;
+  display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 6px; overflow: hidden;
+  background: var(--lib-well); border: 1px solid var(--border2); transform-origin: 0 0;
+}
+#v-library .bab-deep-plate:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border2)); }
+#v-library .bab-deep-plate:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bab-deep-plate .lib-fig { flex: 1; min-height: 0; aspect-ratio: auto; border: 0; background: none; padding: 0; }
+.bab-deep-plate .lib-fig svg { width: 100%; height: 100%; }
+.bab-deep-plate .bab-plate-cap { flex: none; }
+.bab-deep-rail { position: absolute; top: 10px; right: 6px; bottom: 10px; width: 30px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: ns-resize; touch-action: none; }
+.bab-deep-rail-end { font-family: var(--mono); font-size: .54rem; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); padding: 2px 3px; border-radius: 3px; background: color-mix(in srgb, var(--lib-well) 85%, transparent); }
+.bab-deep-track { position: relative; flex: 1; width: 100%; }
+.bab-deep-track::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; border-radius: 1px; background: color-mix(in srgb, var(--text) 22%, transparent); }
+.bab-deep-ticks i { position: absolute; left: 50%; width: 8px; height: 1px; margin-left: -4px; background: color-mix(in srgb, var(--text) 40%, transparent); }
+.bab-deep-thumb { position: absolute; left: 50%; width: 22px; height: 8px; margin: -4px 0 0 -11px; border-radius: 4px; background: var(--text); box-shadow: 0 0 0 2px var(--lib-well); }
+.bab-deep-how { margin: 0; font-family: var(--mono); font-size: .66rem; line-height: 1.5; color: var(--text3); }
 
 .bab-swatch { display: inline-block; flex: none; width: 11px; height: 11px; border-radius: 3px; background: var(--bab-pending); }
 .bab-swatch[data-kind="fa"][data-cls="e"] { background: var(--bab-fa-e); }
