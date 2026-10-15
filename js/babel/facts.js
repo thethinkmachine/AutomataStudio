@@ -29,7 +29,7 @@ export const SUBSET_LIMIT = 4096;
  */
 export function dfaOf(type, params, body) {
   const [n, k] = params;
-  if (type === 'DFA' || type === 'DBA' || type === 'DcoBA' || type === 'DWA') {
+  if (type === 'DFA' || type === 'DBA' || type === 'DWA') {
     const [acc, delta] = body;
     return { n, k, delta: Int32Array.from(delta), acc: Uint8Array.from(acc) };
   }

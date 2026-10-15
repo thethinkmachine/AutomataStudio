@@ -164,7 +164,7 @@ test('every finite room zooms down to single volumes, its cells never more than 
   // they were too thin for the camera to reach the next level, and the zoom
   // went on for ever at the same one.
   const view = { w: 900, h: 560, inset: 40 };
-  const rooms = [[wingByKey('nfa'), [5, 3]], [wingByKey('nfa'), [10, 10]], [wingByKey('tm'), [5, 3]], [wingByKey('lba'), [3, 2]], [wingByKey('mealy'), [2, 2, 2]]];
+  const rooms = [[wingByKey('nfa'), [5, 3]], [wingByKey('nfa'), [10, 10]], [wingByKey('tm'), [5, 3]], [wingByKey('itm'), [8, 3]], [wingByKey('nba'), [6, 2]]];
   for (const w of WINGS) for (const n of [2, 3]) {
     const p = w.params.map((q, i) => Math.max(q.min ?? 1, i === 0 ? n : 2));
     if (!roomProblem(w, p) && roomShape(w, p).finite) rooms.push([w, p]);
@@ -245,7 +245,7 @@ test('a finite room’s map is the deep map, and its bar counts what is on scree
   const bar = barText();
   assert.match(bar, /on screen · 5 machines read per block/);
   assert.match(bar, /something else\s*[1-9]/);
-  context.go('babel-room', 'pfa-2-2', { reset: true });
+  context.go('babel-room', 'counter-2-2', { reset: true });
   assert.equal(findAll(host, n => n.classList?.contains('bab-deep')).length, 0);
   assert.equal(findAll(host, n => n.classList?.contains('bab-map')).length, 1);
 });

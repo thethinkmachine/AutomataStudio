@@ -188,7 +188,6 @@ export function parseBabelRequest(text) {
   let raw;
   try { raw = decodeURIComponent(m[1]); } catch { return null; }
   // js/babel/address.js's grammar, repeated so this module stays import-free.
-  raw = raw.replace(/^e-nfa(?=-|\/|$)/i, 'enfa');   // ε-NFA's old key; see wingKeyOf in wings.js
   if (raw.length > 200000 || !BABEL_ADDRESS.test(raw)) return null;
   return { action: 'babel', address: raw };
 }

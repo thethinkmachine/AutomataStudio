@@ -50,7 +50,7 @@ import {
 } from '../library/library-ui.js';
 import { formatAddress, groupDigits, numberText, parseAddress, sayCount, showNumber } from './address.js';
 import { canonicalOf } from './canon.js';
-import { cellClassesOf, classifyBody, decideText, withVolumeLoaded } from './census.js';
+import { cellClassesOf, classifyBody } from './census.js';
 import { asSketchDfa, dfaOf, firstWords, languageClass, minimiseDfa, weakViolation } from './facts.js';
 import { endlessSpelling, finiteTiles, neighbours, nudge, conventionsOf } from './spell.js';
 import { askBabel } from './babel-client.js';
@@ -362,8 +362,8 @@ const EXAMPLES = [
 
 function pageEntrance() {
   const page = h('div', { class: 'lib-page bab-page bab-entrance' });
-  page.append(locationBar({ tail: h('span', { class: 'bab-loc-note', title: 'Every machine of every type the app knows, numbered — nothing stored, every page computed' },
-    `${WINGS.length} wings · every machine, numbered · works offline`) }));
+  page.append(locationBar({ tail: h('span', { class: 'bab-loc-note', title: 'Every DFA, NFA, Büchi automaton, one-counter automaton and Turing machine, numbered — nothing stored, every page computed' },
+    `${WINGS.length} wings · every machine of these kinds, numbered · works offline`) }));
 
   // The title page: the statement, one field, and the volume it names.
   const select = h('select', { class: 'bab-wing-select', 'aria-label': 'The wing a number counts in' });
@@ -1450,13 +1450,6 @@ function sayLine(wing, params, body, doc) {
     return `Accepts ${words.join(', ')}${c === 'f' && words.length < 4 ? '' : ', …'}`;
   }
   if (wing.kind === 'omega') return classifyBody(wing, params, body) === 'o' ? 'Accepts some ω-word.' : 'Accepts no ω-word.';
-  if (TRANSDUCERS.has(wing.type)) {
-    return withVolumeLoaded(doc, () => shortWords(doc.sigma, 2).slice(0, 5).map(w => {
-      const r = decideText(doc.machine, w);
-      const out = Array.isArray(r.output) ? r.output.join(' | ') : r.output;
-      return `${w || 'ε'} ↦ ${r.verdict === 'err' ? '—' : out === '' || out === null || out === undefined ? 'ε' : out}`;
-    }).join(', '));
-  }
   if (wing.kind === 'tm') return null;
   const c = classifyBody(wing, params, body);
   const lab = cellClassesOf(wing).find(x => x.key === c);
@@ -1618,7 +1611,7 @@ function fillFacts(box, { wing, params, body, doc, own = doc, volume, addr, onVe
     const code = (() => { try { return writeStandardTM(doc, doc.config.sym); } catch { return null; } })();
     if (code) box.append(fact('Code', h('span', {}, h('a', { class: 'lib-link bab-code', href: bbchallengeUrl(code), target: '_blank', rel: 'noopener noreferrer', text: code, title: 'Open on bbchallenge.org' })), { title: 'Its standard code' }));
   }
-  const conv = conventionsOf(wing, params, body);
+  const conv = conventionsOf(wing);
   if (conv.length) box.append(fact('Reads as', conv.map(c => c.split(':')[0]).join(' · '), { title: conv.join('\n') }));
 
   // Twins, after a tick: a search can take a moment.
@@ -1663,19 +1656,6 @@ function letteringNote(wing, params, doc, own, addr) {
   return h('p', { class: 'bab-note' },
     B.ownLetters ? `In your letters ${mine}; its number spells them ${canon}. ` : `In the Library's letters ${canon}; you wrote ${mine}. `,
     button(B.ownLetters ? `Show ${canon}` : `Show ${mine}`, flip, 'bab-inline-btn'));
-}
-
-const TRANSDUCERS = new Set(['Moore', 'Mealy', 'FST', 'PDT', '2DFT']);
-
-/** Words over the letters up to a length, shortest first, as run-box text. */
-function shortWords(letters, maxLen) {
-  const out = [''];
-  let layer = [''];
-  for (let len = 1; len <= maxLen; len++) {
-    layer = layer.flatMap(w => letters.map(a => w + a));
-    out.push(...layer);
-  }
-  return out;
 }
 
 function tmVerdict(slot, wing, params, volume, addr, budget, onVerdict = null) {
@@ -1863,8 +1843,9 @@ export function babelLookup(query) {
  * What the catalogue shows when it has no machine: the Library of Babel's
  * volume for the search — or for the canvas, after Match my canvas — drawn as
  * a plate that opens it; and when the search names no machine, the way in.
- * Every machine is in the Library of Babel, so a search that finds nothing in
- * the catalogue has somewhere to go.
+ * Every machine of the kinds it numbers (DFAs, NFAs, Büchi automata, one-counter automata and Turing machines) is in the Library of
+ * Babel, so a search for one that finds nothing in the catalogue has
+ * somewhere to go; a machine of another kind is told so.
  */
 export function babelOffer(query, { canvas = false, also = false, offline = false } = {}) {
   let found = null;
@@ -1899,13 +1880,14 @@ export function babelOffer(query, { canvas = false, also = false, offline = fals
         said ? h('span', { class: 'bab-offer-says', text: said }) : null,
         button('Open the volume →', open, 'lib-textbtn bab-walk is-strong')));
   }
-  const canvasHasMachine = (App.states || []).length > 0 && !canvas;
+  const canvasHasMachine = (App.states || []).length > 0 && !canvas && !!wingOf(App.machine);
   return h('section', { class: 'bab-offer is-plain', 'aria-label': 'AutomataStudio Babel' },
     h('div', { class: 'bab-offer-text' },
       h('span', { class: 'bab-kicker', text: 'AutomataStudio Babel' }),
       h('p', { class: 'bab-offer-say', text: refused
         ? 'AutomataStudio Babel finds a regular expression by its minimal DFA, and this is not one it can read.'
-        : 'Every machine that could exist has a volume there, this one too.' }),
+        : found?.kind === 'error' && canvas ? 'AutomataStudio Babel numbers DFAs, NFAs, Büchi automata, one-counter automata and Turing machines.'
+        : 'Every machine of the kinds it numbers has a volume there.' }),
       h('span', { class: 'bab-offer-hint', text: found?.kind === 'error' && (canvas || refused) ? found.error : 'Describe it as a regular expression or a machine code, or bring the one on your canvas.' }),
       h('div', { class: 'bab-offer-actions' },
         button('Look it up in AutomataStudio Babel →', () => go('babel'), 'lib-textbtn bab-walk is-strong'),

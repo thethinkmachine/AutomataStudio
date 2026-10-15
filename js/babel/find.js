@@ -23,7 +23,7 @@ import { machineCodeText, readMachineCode } from '../interop/smtf.js';
 import { formatAddress, parseAddress, parseNumber } from './address.js';
 import { dfaOf, minimiseDfa } from './facts.js';
 import { fromWingNumber, locateDocument, volumeNumber } from './volumes.js';
-import { wingByKey } from './wings.js';
+import { unnumbered, unnumberedTypeOfKey, wingByKey } from './wings.js';
 
 /**
  * Text → what it names:
@@ -48,6 +48,12 @@ export function findVolume(text, { wing: wingKey = 'dfa' } = {}) {
       return { kind: 'error', error: e.message };
     }
   }
+
+  // An address in a wing the library no longer has (npda-3-2-2, pfa-2-2/40,
+  // e-nfa-2-2) is refused, never read as a regular expression over its letters.
+  const head = /^(e-nfa|[0-9]*[a-z][a-z0-9]*)(?:-[0-9]+)*(?:\/.*)?$/i.exec(raw);
+  const gone = head && unnumberedTypeOfKey(head[1]);
+  if (gone) return { kind: 'error', error: unnumbered(gone) };
 
   const addr = parseAddress(raw);
   if (addr && wingByKey(addr.key)) {

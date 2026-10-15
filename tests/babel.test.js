@@ -106,25 +106,21 @@ test('a distribution is its parts over their least common denominator, and nothi
 
 // ── Wings ─────────────────────────────────────────────────────────
 
-test('every machine type has a wing, and the alias has its target\'s', () => {
-  for (const type of Object.keys(MachineTypes)) {
-    assert.ok(wingOf(type), `${type} has no wing — declare its shape in js/babel/wings.js`);
-  }
-  assert.equal(WINGS.length, Object.keys(MachineTypes).length - Object.keys(WINGLESS_ALIASES).length);
-  assert.equal(new Set(WINGS.map(w => w.key)).size, WINGS.length, 'wing keys are unique');
-});
+// The library numbers the machines whose numbering answers a question a
+// theory course asks and whose map is decided (wings.js, DEFS); since
+// 2026-10-15 every other type is refused, in a sentence that names the rest.
+const KEPT = ['DFA', 'NFA', 'DBA', 'NBA', 'Counter', 'TM', 'ITM'];
 
-test('every PFA volume is a probabilistic automaton: each row sums to 1, or is absent', () => {
-  const wing = wingByKey('pfa');
-  for (let v = 0n; v < 400n; v++) {
-    const { doc } = openVolume({ wing, params: [2, 2], volume: v * 97n });
-    const rows = new Map();
-    for (const t of doc.transitions) rows.set(`${t.from}|${t.symbol}`, (rows.get(`${t.from}|${t.symbol}`) || 0) + t.weight);
-    for (const [key, total] of rows) assert.ok(Math.abs(total - 1) < 1e-9, `pfa-2-2/${v * 97n}: row ${key} sums to ${total}`);
+test('the wings are the seven machines that earn one, and every other type is refused in a sentence', () => {
+  assert.deepEqual(WINGS.map(w => w.type), KEPT);
+  assert.equal(new Set(WINGS.map(w => w.key)).size, WINGS.length, 'wing keys are unique');
+  for (const [alias, target] of Object.entries(WINGLESS_ALIASES)) assert.equal(wingOf(alias)?.type, target, `${alias} is shelved in ${target}`);
+  for (const type of Object.keys(MachineTypes)) {
+    if (wingOf(type)) continue;
+    const r = readDocument({ machine: type, states: [{ id: 's0' }], transitions: [], sigma: ['a'] });
+    assert.match(r.error, /numbers DFA, NFA, DBA, NBA, Counter, TM and ITM machines; a .+ has no volume here/, type);
   }
-  const bad = openVolume({ wing, params: [2, 1], volume: 40n }).doc;
-  bad.transitions = [{ id: 't1', from: 's0', to: 's1', symbol: 'a', weight: 0.5 }, { id: 't2', from: 's0', to: 's0', symbol: 'a', weight: 0.4 }];
-  assert.match(readDocument(bad).error, /add to 0.9, not 1/);
+  assert.equal(wingByKey('pfa'), null, 'a removed wing’s key names nothing');
 });
 
 test('a weak automaton is shelved with the Büchi automata, and its page says whether it is weak', () => {
@@ -160,16 +156,6 @@ test('a TM volume carries its tape, so no reader setting changes what it is', ()
     });
     assert.deepEqual(verdicts[0], verdicts[1]);
   } finally { context.App.config.twoWayTape = held; }
-  // NDTM and MTM hold the tape as the first choice of the number.
-  for (const key of ['ndtm', 'mtm']) {
-    const wing = wingByKey(key);
-    const params = wing.params.map(p => p.min);
-    const shape = roomShape(wing, params);
-    const half = shape.finite ? shape.total / 2n : null;
-    if (half === null) continue;
-    assert.equal(openVolume({ wing, params, volume: 0n }).doc.config.twoWayTape, false, key);
-    assert.equal(openVolume({ wing, params, volume: half }).doc.config.twoWayTape, true, key);
-  }
 });
 
 test('every wing: a volume becomes a document and reads back as the same volume', () => {
@@ -189,14 +175,17 @@ test('every wing: a volume becomes a document and reads back as the same volume'
   }
 });
 
-test('every bundled example reads into a volume that decides as the original does', () => {
+test('every bundled example of a numbered type reads into a volume that decides as the original does', () => {
+  let read = 0;
   for (const f of readdirSync(EXAMPLES).filter(f => f.endsWith('.json'))) {
     const doc = JSON.parse(readFileSync(join(EXAMPLES, f), 'utf8'));
     const loc = locateDocument(doc);
+    if (!wingOf(doc.machine)) { assert.match(loc.error, /has no volume here/, `${f} is refused in a sentence`); continue; }
     assert.ok(!loc.error, `${f}: ${loc.error}`);
+    read++;
     const v = openVolume({ wing: loc.wing, params: loc.params, volume: loc.volume });
     const cfg = MachineTypes[doc.machine] || {};
-    if (cfg.isOmega || loc.wing.kind === 'tm' || ['MTM', 'LBA', 'NDTM', 'PFA'].includes(doc.machine)) continue;
+    if (cfg.isOmega || loc.wing.kind === 'tm') continue;
     const sigma = loc.names.sigma || [];
     const sep = sigma.some(s => s.length > 1) ? ' ' : '';
     const words = [[]];
@@ -208,12 +197,14 @@ test('every bundled example reads into a volume that decides as the original doe
       assert.equal(now.verdict, was.verdict, `${f} on ${JSON.stringify(w)}`);
     }
   }
+  assert.ok(read >= 16, `the examples of every numbered type are read (${read})`);
 });
 
 test('a volume given its reader\'s letters back decides as the original, in those letters', () => {
   let renamed = 0;
   for (const f of readdirSync(EXAMPLES).filter(f => f.endsWith('.json'))) {
     const doc = JSON.parse(readFileSync(join(EXAMPLES, f), 'utf8'));
+    if (!wingOf(doc.machine)) continue;
     const loc = locateDocument(doc);
     const v = openVolume({ wing: loc.wing, params: loc.params, volume: loc.volume });
     const own = withReaderNames(v.doc, loc.names);
@@ -223,7 +214,7 @@ test('a volume given its reader\'s letters back decides as the original, in thos
     assert.equal(back.volume, loc.volume, `${f}: the reader's letters do not change the number`);
     if (own !== v.doc) renamed++;
     const cfg = MachineTypes[doc.machine] || {};
-    if (cfg.isOmega || loc.wing.kind === 'tm' || ['MTM', 'LBA', 'NDTM', 'PFA'].includes(doc.machine)) continue;
+    if (cfg.isOmega || loc.wing.kind === 'tm') continue;
     const sigma = loc.names.sigma || [];
     if (own === v.doc || !sigma.length) continue;
     assert.deepEqual(own.sigma, sigma, `${f}: drawn over the reader's alphabet`);
@@ -239,7 +230,7 @@ test('a volume given its reader\'s letters back decides as the original, in thos
       assert.deepEqual(now.output ?? null, was.output ?? null, `${f} emits the same on ${JSON.stringify(text)}`);
     }
   }
-  assert.ok(renamed > 10, `most examples are written in letters of their own (${renamed})`);
+  assert.ok(renamed >= 5, `most examples are written in letters of their own (${renamed})`);
 });
 
 test('the design\'s numbers: (ab)*, DFA № 1,537 and BB(4)', () => {
@@ -513,8 +504,8 @@ test('a finite volume\'s tiles add up to its number, and ↑ moves one rule', ()
   assert.equal(tiles.reduce((s, t) => s + t.digit * t.place, tiles.offset), 977n);
   assert.equal(tiles[6].key, 'q2 · b');
   assert.equal(nudge(tiles, 977n, 6, 1), 2921n);
-  const fst = wingByKey('fst');
-  const sp = endlessSpelling(fst, [1, 2, 2], volumeAt(fst, [1, 2, 2], 40n).body);
+  const counter = wingByKey('counter');
+  const sp = endlessSpelling(counter, [1, 1], volumeAt(counter, [1, 1], 40n).body);
   assert.equal(sp.before + sp.rank, 40n);
 });
 
@@ -585,12 +576,12 @@ test('the Entrance reads as you type and lists every wing', () => {
   const page = textOf(host);
   assert.match(page, /Every machine that has ever been conceived,/);
   assert.match(page, /or ever will be\./);
-  assert.match(page, /28 wings/);
+  assert.match(page, /7 wings/);
   // One hexagon per wing: DWA and NWA read into DBA's and NBA's wings, and
   // used to draw those two hexagons a second time.
   const hexes = findAll(host, n => n.classList?.contains('bab-wing-link')).map(textOf);
-  assert.equal(hexes.length, 28);
-  assert.equal(new Set(hexes).size, 28, 'no wing is drawn twice');
+  assert.equal(hexes.length, 7);
+  assert.equal(new Set(hexes).size, 7, 'no wing is drawn twice');
   const input = findAll(host, n => n.classList?.contains('bab-typewriter'))[0];
   input.value = '1537';
   input._listeners.input({});
@@ -726,7 +717,7 @@ test('a room draws its map and its plates, and the Wings page its grid', async (
   const plates = findAll(host, n => n.classList?.contains('bab-toggle')).find(b => textOf(b) === 'Plates');
   plates._listeners.click({});
   assert.equal(findAll(host, n => n.classList?.contains('bab-plate')).length, 24);
-  context.go('babel-wings', 'npda', { reset: true });
+  context.go('babel-wings', 'counter', { reset: true });
   assert.match(textOf(host), /counted by size/);
   context.go('babel-wings', 'dfa', { reset: true });
   assert.match(textOf(host), /5,832/);
@@ -742,8 +733,8 @@ test('an address that names nothing is a page that says so', () => {
 });
 
 test('every wing’s rooms and volumes have addresses that read back', () => {
-  // ε-NFA's key was `e-nfa`: the hyphen that separates a room's parameters,
-  // so no address could name an ε-NFA room or volume, and none ever opened.
+  // A key has no hyphen, since `-` separates a room's parameters: ε-NFA's was
+  // `e-nfa`, and no ε-NFA room or volume ever opened.
   for (const w of WINGS) {
     const params = w.params.map(p => Math.max(p.min ?? 1, 2));
     for (const volume of [null, 5n]) {
@@ -756,5 +747,14 @@ test('every wing’s rooms and volumes have addresses that read back', () => {
       assert.equal(parseLibraryHash(`#babel=${address}`)?.address, address, `${w.type}: #babel=${address} is a link`);
     }
   }
-  assert.equal(wingByKey(parseAddress('e-nfa-3-2/7').key).type, 'ε-NFA', 'the old spelling still reads');
+});
+
+test('an old link to a wing the library no longer has is refused, never read as a regular expression', () => {
+  for (const text of ['npda-3-2-2', 'pfa-2-2/40', 'e-nfa-2-2', 'mealy', '2dft-1-2-2/7']) {
+    const found = findVolume(text);
+    assert.equal(found.kind, 'error', `${text} is refused`);
+    assert.match(found.error, /numbers DFA, NFA, DBA, NBA, Counter, TM and ITM machines/);
+  }
+  assert.equal(findVolume('dfa-3-2/977').kind, 'volume');
+  assert.equal(findVolume('(a|b)*abb').kind, 'volume', 'a regular expression still reads');
 });

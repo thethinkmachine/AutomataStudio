@@ -54,7 +54,7 @@ const NARROW = 256;       // a huge digit is narrowed this many ways a level
 /**
  * How many machines colour a block. Five for finite automata and ω-automata,
  * whose classifiers take microseconds; one for the rooms whose machines are
- * run (Turing machines, transducers, store machines), where five would make
+ * run (Turing machines, the one-counter automaton), where five would make
  * every screen five times slower to read.
  */
 export function samplesFor(wing) {
