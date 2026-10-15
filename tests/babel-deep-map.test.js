@@ -164,7 +164,7 @@ test('every finite room zooms down to single volumes, its cells never more than 
   // they were too thin for the camera to reach the next level, and the zoom
   // went on for ever at the same one.
   const view = { w: 900, h: 560, inset: 40 };
-  const rooms = [[wingByKey('nfa'), [5, 3]], [wingByKey('nfa'), [10, 10]]];
+  const rooms = [[wingByKey('nfa'), [5, 3]], [wingByKey('nfa'), [10, 10]], [wingByKey('tm'), [5, 3]], [wingByKey('lba'), [3, 2]], [wingByKey('mealy'), [2, 2, 2]]];
   for (const w of WINGS) for (const n of [2, 3]) {
     const p = w.params.map((q, i) => Math.max(q.min ?? 1, i === 0 ? n : 2));
     if (!roomProblem(w, p) && roomShape(w, p).finite) rooms.push([w, p]);
@@ -177,6 +177,16 @@ test('every finite room zooms down to single volumes, its cells never more than 
     let n = 0;
     while (!(cam.L === L.D && Math.abs(depthOf(cam, L) - bottom) < 1e-9) && n++ < 5000) zoomAt(cam, L, view, 1.25, 450, 280);
     assert.ok(n < 5000, `${w.type} ${p.join('·')} reaches its volumes (stuck at level ${cam.L} of ${L.D})`);
+    // …and back out to the whole room, never past it: a fitted room is often
+    // drawn a level down, and the limit held only at level 1 let the zoom
+    // overshoot and snap back.
+    const top = depthRange(L, view).top;
+    let m = 0;
+    while (Math.abs(depthOf(cam, L) - top) > 1e-9 && m++ < 5000) {
+      zoomAt(cam, L, view, 0.8, 450, 280);
+      assert.ok(depthOf(cam, L) <= top + 1e-9, `${w.type} ${p.join('·')} zoomed out past the whole room`);
+    }
+    assert.ok(m < 5000, `${w.type} ${p.join('·')} returns to the whole room`);
   }
 });
 

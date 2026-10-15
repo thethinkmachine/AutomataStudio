@@ -145,6 +145,7 @@ function buildLayout(wing, params, shape, id) {
     id, total, sizes, levels, aspect, W, H,
     D: levels.length,
     lvol: sizes.map(bigLog10),
+    lW: W.map(bigLog10),   // log10 of each level's columns: the depth measure
     picks: []
   };
   layout.picks = levelPicks(wing, params, shape, layout);
@@ -346,6 +347,19 @@ function fitScale(layout, view) {
   return Math.max(fit, MAP_FLOOR * Math.max(1, asp));
 }
 
+/**
+ * The smallest cell width at level L: the whole room, fitted. The fitted room
+ * is often drawn a level or two down (its level-1 cells are large enough to
+ * show their children), so the limit has to hold at every level, not only at
+ * level 1 — held there alone, zooming out from the whole room went past it
+ * and snapped back.
+ */
+function minScaleAt(layout, view, L) {
+  let s = fitScale(layout, view);
+  for (let i = 1; i < L && s > 0; i++) s /= layout.levels[i].cols;
+  return s;
+}
+
 function maxScale(layout) {
   return MAP_MAX_CELL * Math.min(1, layout.aspect[layout.D]);
 }
@@ -372,7 +386,7 @@ export function normalize(cam, layout, view) {
     const ix = Math.floor(cam.ox), iy = Math.floor(cam.oy);
     if (ix) { cam.AX += BigInt(ix); cam.ox -= ix; }
     if (iy) { cam.AY += BigInt(iy); cam.oy -= iy; }
-    if (cam.L === 1) cam.s = Math.max(cam.s, fitScale(layout, view));
+    cam.s = Math.max(cam.s, minScaleAt(layout, view, cam.L));
     if (cam.L === D) cam.s = Math.min(cam.s, maxScale(layout));
     if (cam.L < D && minDim(layout, cam.L + 1, cam.s / levels[cam.L].cols) >= MAP_FLOOR) {
       const { cols, rows, colsB, rowsB } = levels[cam.L];
@@ -414,22 +428,26 @@ export function panBy(cam, layout, view, dx, dy) {
 
 /** How deep the view is, as one number across levels: log10 of volumes per square CSS pixel. */
 export function depthOf(cam, layout) {
-  return layout.lvol[cam.L] - Math.log10(cam.s * cellH(layout, cam.L, cam.s));
+  return -(layout.lW[cam.L] + Math.log10(cam.s));
 }
 
-/** The depths of the whole room and of the largest single volume. */
+/**
+ * The depths of the whole room and of the largest single volume. Depth is
+ * minus log10 of the room's width on screen, so it falls by one per tenfold
+ * zoom and is the same either side of a level change. (Volumes per pixel is
+ * not: a level whose grid has empty cells — 46 children in 7 × 7 — would
+ * jump at every hand-over, and the rail's thumb with it.)
+ */
 export function depthRange(layout, view) {
-  const top = fitScale(layout, view), bottom = maxScale(layout);
   return {
-    top: layout.lvol[1] - Math.log10(top * cellH(layout, 1, top)),
-    bottom: -Math.log10(bottom * cellH(layout, layout.D, bottom))
+    top: -(layout.lW[1] + Math.log10(fitScale(layout, view))),
+    bottom: -(layout.lW[layout.D] + Math.log10(maxScale(layout)))
   };
 }
 
 /** The depth at which level l's cells reach the floor: where the rail marks the level. */
 export function levelDepth(layout, l) {
-  const s = MAP_FLOOR * Math.max(1, layout.aspect[l]);
-  return layout.lvol[l] - Math.log10(s * cellH(layout, l, s));
+  return -(layout.lW[l] + Math.log10(MAP_FLOOR * Math.max(1, layout.aspect[l])));
 }
 
 /** Screen geometry of the current level. */

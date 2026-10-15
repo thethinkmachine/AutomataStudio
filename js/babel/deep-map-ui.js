@@ -407,7 +407,7 @@ export function deepMapView(wing, params, hooks) {
     const at = Math.max(0, Math.min(1, (ev.clientY - box.top) / box.height));
     const r = depthRange(layout, view);
     const target = r.top - at * (r.top - r.bottom);
-    zoomAt(cam, layout, view, 10 ** ((depthOf(cam, layout) - target) / 2), view.w / 2, view.h / 2);
+    zoomAt(cam, layout, view, 10 ** (depthOf(cam, layout) - target), view.w / 2, view.h / 2);
     afterMove();
   }
   rail.addEventListener('pointerdown', ev => {

@@ -740,3 +740,21 @@ test('an address that names nothing is a page that says so', () => {
   context.go('babel-room', 'nope-1', { reset: true });
   assert.match(textOf(context.document.getElementById('lib-content')), /There is no such room/);
 });
+
+test('every wing’s rooms and volumes have addresses that read back', () => {
+  // ε-NFA's key was `e-nfa`: the hyphen that separates a room's parameters,
+  // so no address could name an ε-NFA room or volume, and none ever opened.
+  for (const w of WINGS) {
+    const params = w.params.map(p => Math.max(p.min ?? 1, 2));
+    for (const volume of [null, 5n]) {
+      const address = formatAddress({ key: w.key, params, volume });
+      const back = parseAddress(address);
+      assert.ok(back, `${w.type}: ${address} parses`);
+      assert.equal(wingByKey(back.key), w, `${w.type}: ${address} names its wing`);
+      assert.deepEqual(back.params, params);
+      assert.equal(back.volume, volume);
+      assert.equal(parseLibraryHash(`#babel=${address}`)?.address, address, `${w.type}: #babel=${address} is a link`);
+    }
+  }
+  assert.equal(wingByKey(parseAddress('e-nfa-3-2/7').key).type, 'ε-NFA', 'the old spelling still reads');
+});

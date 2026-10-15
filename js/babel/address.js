@@ -27,10 +27,11 @@ export const LONG_DIGITS = 40;
  * and wingNumber null when absent), or null when it is not an address.
  */
 export function parseAddress(text) {
-  const t = String(text ?? '').trim().toLowerCase().replace(/^#?babel=/, '');
+  // `e-nfa` is how ε-NFA's key was spelled before keys lost their hyphens.
+  const t = String(text ?? '').trim().toLowerCase().replace(/^#?babel=/, '').replace(/^e-nfa(?=-|\/|$)/, 'enfa');
   if (!t || t.length > MAX_ADDRESS_CHARS) return null;
   // base64url is case-sensitive, so the volume part is read from the original.
-  const raw = String(text).trim().replace(/^#?babel=/i, '');
+  const raw = String(text).trim().replace(/^#?babel=/i, '').replace(/^e-nfa(?=-|\/|$)/i, 'enfa');
   const m = ADDRESS.exec(t);
   if (!m) return null;
   const key = m[1];

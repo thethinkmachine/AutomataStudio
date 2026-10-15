@@ -1112,7 +1112,10 @@ const DEFS = [
 ];
 
 /** The wing's key in an address: the type's name in lower case, ε as e. */
-export const wingKeyOf = type => type.toLowerCase().replace('ε', 'e');
+// A key is the first part of an address, where `-` separates the room's
+// parameters, so a key has no hyphen: ε-NFA is `enfa`. It was `e-nfa`, which
+// no address could parse, so every ε-NFA room and volume was unreachable.
+export const wingKeyOf = type => type.toLowerCase().replace('ε', 'e').replace(/-/g, '');
 
 export const WINGS = DEFS.map(d => Object.freeze({ ...d, key: wingKeyOf(d.type) }));
 const BY_KEY = new Map(WINGS.map(w => [w.key, w]));
