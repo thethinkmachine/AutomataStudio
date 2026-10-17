@@ -53,13 +53,13 @@ const NARROW = 256;       // a huge digit is narrowed this many ways a level
 export const MAX_LEVELS = 2500;  // the deepest room the map flies through (about 0.25 s to lay out)
 
 /**
- * How many machines colour a block. Five for finite automata and ω-automata,
- * whose classifiers take microseconds; one for the rooms whose machines are
- * run (Turing machines, the one-counter automaton), where five would make
- * every screen five times slower to read.
+ * How many machines colour a block. Five where a volume is decided from its
+ * table — finite automata, ω-automata, pushdown automata; one for the rooms
+ * whose machines are run (Turing machines), where five would make every screen
+ * five times slower to read.
  */
 export function samplesFor(wing) {
-  return wing.kind === 'fa' || wing.kind === 'omega' ? 5 : 1;
+  return wing.kind === 'tm' ? 1 : 5;
 }
 
 /** log10 of a positive BigInt, to a float's precision. */

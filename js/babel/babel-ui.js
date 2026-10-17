@@ -51,6 +51,7 @@ import {
 import { formatAddress, groupDigits, numberText, parseAddress, sayCount, showNumber } from './address.js';
 import { canonicalOf } from './canon.js';
 import { cellClassesOf, classifyBody } from './census.js';
+import { pushdownFacts, shortestAccepted } from './context-free.js';
 import { asSketchDfa, dfaOf, firstWords, languageClass, minimiseDfa, weakViolation } from './facts.js';
 import { endlessSpelling, finiteTiles, neighbours, nudge, conventionsOf } from './spell.js';
 import { askBabel } from './babel-client.js';
@@ -367,7 +368,7 @@ const EXAMPLES = [
 
 function pageEntrance() {
   const page = h('div', { class: 'lib-page bab-page bab-entrance' });
-  page.append(locationBar({ tail: h('span', { class: 'bab-loc-note', title: 'Every DFA, NFA, Büchi automaton, one-counter automaton and Turing machine, numbered — nothing stored, every page computed' },
+  page.append(locationBar({ tail: h('span', { class: 'bab-loc-note', title: 'Every DFA, NFA, Büchi automaton, pushdown automaton, one-counter automaton and Turing machine, numbered — nothing stored, every page computed' },
     `${WINGS.length} wings · every machine of these kinds, numbered · works offline`) }));
 
   // The title page: the statement, one field, and the volume it names.
@@ -1211,7 +1212,7 @@ function roomPlates(wing, params, c) {
   const shape = roomShape(wing, params);
   const from = B.from.get(id) ?? 0n;
   const lit = B.lit.get(id) || null;
-  const filterable = lit && (wing.kind === 'fa' || wing.kind === 'omega');
+  const filterable = lit && wing.kind !== 'tm';
   const wrap = h('section', { class: 'bab-plates-sec' });
   const list = [];
   let v = from;
@@ -1362,8 +1363,18 @@ function kindLine(wing, params, body) {
     return t ? `${CLASS_WORDS[languageClass(t)]} language` : null;
   }
   if (wing.kind === 'omega') return 'ω-regular language';
+  if (PUSHDOWN_KINDS.has(wing.kind)) {
+    const r = pushdownFacts(wing, params, body);
+    if (r.tooLarge) return null;
+    if (r.empty) return 'empty language';
+    if (r.finite) return 'finite language';
+    if (r.universal) return 'every word';
+    return { DPDA: 'deterministic context-free language', NPDA: 'context-free language', Counter: 'one-counter language' }[wing.type] || null;
+  }
   return null;
 }
+
+const PUSHDOWN_KINDS = new Set(['cf', 'dcf']);
 
 /** The machine code a volume is known by anywhere: pasted on a canvas it opens, in a search it finds. */
 function machineCodeOf(doc) {
@@ -1462,9 +1473,15 @@ function sayLine(wing, params, body, doc) {
   }
   if (wing.kind === 'omega') return classifyBody(wing, params, body) === 'o' ? 'Accepts some ω-word.' : 'Accepts no ω-word.';
   if (wing.kind === 'tm') return null;
-  const c = classifyBody(wing, params, body);
-  const lab = cellClassesOf(wing).find(x => x.key === c);
-  return lab ? `${lab.label[0].toUpperCase()}${lab.label.slice(1)} of the words up to length 3.` : null;
+  const r = pushdownFacts(wing, params, body);
+  if (r.tooLarge) return null;
+  if (r.empty) return 'Accepts nothing.';
+  if (r.universal) return 'Accepts every word.';
+  const first = shortestAccepted(wing, params, body);
+  const many = r.finite ? 'finitely many words' : r.universal === false ? 'infinitely many words, but not every one' : 'infinitely many words';
+  if (!first) return `Accepts ${many}.`;
+  const shortest = first.word ? `the shortest is ${spellWord(first.word, doc.sigma)}` : `the shortest has ${groupDigits(BigInt(first.length))} letters`;
+  return `Accepts ${many}; ${shortest}.`;
 }
 
 function openOnCanvas(doc, addr) {
@@ -1615,6 +1632,21 @@ function fillFacts(box, { wing, params, body, doc, own = doc, volume, addr, onVe
     const names = new Map(doc.states.map(s => [s.id, s.name]));
     box.append(fact('Weak', clash ? `no — {${clash.map(q => names.get(q) || q).join(', ')}} straddles F` : '✓ yes',
       { title: `Weak: every cycle sits wholly inside F or wholly outside it. A weak automaton (${wing.type === 'DBA' ? 'DWA' : 'NWA'}) is shelved here, since it decides as a Büchi automaton does.` }));
+  } else if (PUSHDOWN_KINDS.has(wing.kind)) {
+    const r = pushdownFacts(wing, params, body);
+    if (r.tooLarge) box.append(fact('Language', 'too large to decide here', { title: 'Its grammar passes the limit this page builds' }));
+    else {
+      const what = r.empty ? 'empty' : r.finite ? 'finite' : r.universal ? 'every word' : r.universal === false ? 'infinite, not every word' : 'infinite';
+      const why = wing.type === 'DPDA'
+        ? 'Decided exactly: emptiness, finiteness and — for a deterministic pushdown automaton — whether it accepts every word'
+        : 'Decided exactly: emptiness and finiteness. Whether it accepts every word cannot be decided for these machines in general';
+      box.append(fact('Language', what, { title: why }));
+      const first = r.empty ? null : shortestAccepted(wing, params, body);
+      if (first) {
+        box.append(fact('Shortest', first.word ? spellWord(first.word, own.sigma) : `${groupDigits(BigInt(first.length))} letters`,
+          { title: 'The shortest word it accepts, from its grammar' }));
+      }
+    }
   } else if (wing.kind === 'tm') {
     const slot = h('div', { class: 'bab-fact-slot' });
     box.append(slot);
@@ -1622,7 +1654,7 @@ function fillFacts(box, { wing, params, body, doc, own = doc, volume, addr, onVe
     const code = (() => { try { return writeStandardTM(doc, doc.config.sym); } catch { return null; } })();
     if (code) box.append(fact('Code', h('span', {}, h('a', { class: 'lib-link bab-code', href: bbchallengeUrl(code), target: '_blank', rel: 'noopener noreferrer', text: code, title: 'Open on bbchallenge.org' })), { title: 'Its standard code' }));
   }
-  const conv = conventionsOf(wing);
+  const conv = conventionsOf(wing, params, body);
   if (conv.length) box.append(fact('Reads as', conv.map(c => c.split(':')[0]).join(' · '), { title: conv.join('\n') }));
 
   // Twins, after a tick: a search can take a moment.
@@ -1854,7 +1886,7 @@ export function babelLookup(query) {
  * What the catalogue shows when it has no machine: the Library of Babel's
  * volume for the search — or for the canvas, after Match my canvas — drawn as
  * a plate that opens it; and when the search names no machine, the way in.
- * Every machine of the kinds it numbers (DFAs, NFAs, Büchi automata, one-counter automata and Turing machines) is in the Library of
+ * Every machine of the kinds it numbers (DFAs, NFAs, Büchi automata, pushdown automata, one-counter automata and Turing machines) is in the Library of
  * Babel, so a search for one that finds nothing in the catalogue has
  * somewhere to go; a machine of another kind is told so.
  */
@@ -1897,7 +1929,7 @@ export function babelOffer(query, { canvas = false, also = false, offline = fals
       h('span', { class: 'bab-kicker', text: 'AutomataStudio Babel' }),
       h('p', { class: 'bab-offer-say', text: refused
         ? 'AutomataStudio Babel finds a regular expression by its minimal DFA, and this is not one it can read.'
-        : found?.kind === 'error' && canvas ? 'AutomataStudio Babel numbers DFAs, NFAs, Büchi automata, one-counter automata and Turing machines.'
+        : found?.kind === 'error' && canvas ? 'AutomataStudio Babel numbers DFAs, NFAs, Büchi automata, pushdown automata, one-counter automata and Turing machines.'
         : 'Every machine of the kinds it numbers has a volume there.' }),
       h('span', { class: 'bab-offer-hint', text: found?.kind === 'error' && (canvas || refused) ? found.error : 'Describe it as a regular expression or a machine code, or bring the one on your canvas.' }),
       h('div', { class: 'bab-offer-actions' },

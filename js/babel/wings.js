@@ -21,9 +21,12 @@
 //   • a wildcard edge is expanded into the edges it stands for;
 //   • a deterministic finite automaton is complete: a partial one is read with
 //     a sink added, and the page says so;
-//   • a counter's stack is Z under a run of 1s;
+//   • a store machine's bottom marker is Z, its other symbols A, B, C, …;
+//     a counter's stack is Z under a run of 1s;
 //   • what changes a machine's meaning is part of it, never a reader's
-//     setting: a TM's tape is one-way (a two-way one is shelved in ITM).
+//     setting: a TM's tape is one-way (a two-way one is shelved in ITM), and
+//     a pushdown automaton's convention (final state over Z, or empty stack)
+//     is the first choice of its number.
 //
 // Anything a wing cannot hold — two moves a deterministic type forbids, a
 // machine of a type with no wing — is refused with a reason, never approximated.
@@ -34,7 +37,7 @@
 //
 // DOM-free and App-free, so the worker and the website read it as it is.
 
-import { bits, fin, option, seq, subset, table, tuple } from './shape.js';
+import { bits, fin, oneOf, option, seq, subset, table, tuple } from './shape.js';
 
 // The app's default symbols, carried in every volume's document so it reads
 // with its own spelling whatever the reader has configured.
@@ -340,7 +343,7 @@ const COUNTER = (() => {
   return {
     type: 'Counter',
     params: [{ id: 'states', min: 1 }, { id: 'letters', min: 1 }],
-    kind: 'words', store: true, explicitOnly: true,
+    kind: 'cf', store: true, explicitOnly: true,
     shape: ([n, k]) => tuple(bits(n), subset(moveShape(n, k))),
     toDoc([acc, moves], [n, k]) {
       const doc = newDoc('Counter', n);
@@ -371,6 +374,251 @@ const COUNTER = (() => {
     move: (mv, [n, k]) => `${stateName(mv[0])} —${mv[1] === k ? SYM.eps : letterName(mv[1])}→ ${stateName(mv[3])}`
   };
 })();
+
+// ── Pushdown automata ─────────────────────────────────────────────
+//
+// Both wings hold either convention, as the app does: a bottom marker Z under
+// everything with acceptance by final state, or an empty start stack with
+// acceptance by empty stack (the bracket matcher's). The convention is the
+// first choice of the number — explicit first — so it is part of the machine,
+// never the reader's setting. These are the numberings the two wings had
+// before 2026-10-15, restored unchanged: an old DPDA or NPDA address names the
+// machine it always did.
+
+/**
+ * A store machine's symbols: under the explicit convention Z is symbol 0 and
+ * the room's m others follow; under the empty-stack convention there is no Z.
+ */
+function storeAlphabet(explicit, m) {
+  const out = [];
+  if (explicit) out.push(SYM.stackBottom);
+  for (let i = 0; i < m; i++) out.push(stackName(i));
+  return out;
+}
+
+function readStore(doc) {
+  const sym = symOf(doc);
+  const ts = transitionsOf(doc);
+  const explicit = (doc.config?.pdaParadigm ?? 'explicit') !== 'empty';
+  const skip = new Set([sym.eps, sym.any, sym.leftMarker, sym.rightMarker]);
+  const sigma = alphabetOf(doc.sigma, ts.map(t => t.symbol), skip);
+  if (!sigma.length) refuse('It has no letters.');
+  for (const t of ts) for (const f of ['pop', 'push', 'symbol']) if (t[f] === sym.any) refuse('It has a wildcard in a move; this wing holds machines without them.');
+  const used = [];
+  for (const t of ts) {
+    if (t.pop && t.pop !== sym.eps) used.push(t.pop);
+    used.push(...charsOf(t.push, sym));
+  }
+  const others = alphabetOf(doc.stackAlpha, used, new Set([sym.eps, sym.stackBottom, sym.any]));
+  const gamma = explicit ? [sym.stackBottom, ...others] : others;
+  const g = s => indexIn(gamma, s, 'the stack symbol');
+  return { sym, ts, sigma, k: sigma.length, explicit, gamma, m: others.length, g };
+}
+
+const readOf = (t, R) => (t.symbol === R.sym.eps || t.symbol === '' || t.symbol === undefined ? -1 : indexIn(R.sigma, String(t.symbol), 'the letter'));
+const emptyStackNote = S => (S.accepting.some(Boolean) ? ['It accepts by empty stack, so its accepting states are not part of it.'] : []);
+
+/** The nondeterministic pushdown automaton: δ is a set of moves, under either convention. */
+const NPDA = (() => {
+  // A move: from, read (letters, then ε), pop (Γ, then nothing), to, push.
+  const moveShape = (n, k, G) => tuple([fin(n), fin(k + 1), fin(G + 1), fin(n), strings(G)]);
+  return {
+    type: 'NPDA',
+    params: [{ id: 'states', min: 1 }, { id: 'letters', min: 1 }, { id: 'stack symbols', min: 0 }],
+    kind: 'cf', store: true,
+    shape: ([n, k, m]) => oneOf(tuple(bits(n), subset(moveShape(n, k, m + 1))), subset(moveShape(n, k, m))),
+    toDoc(body, [n, k, m]) {
+      const explicit = body.tag === 0;
+      const [acc, moves] = explicit ? body.value : [new Array(n).fill(0), body.value];
+      const gamma = storeAlphabet(explicit, m);
+      const doc = newDoc('NPDA', n);
+      doc.sigma = Array.from({ length: k }, (_, a) => letterName(a));
+      doc.stackAlpha = [...gamma];
+      doc.config.pdaParadigm = explicit ? 'explicit' : 'empty';
+      doc.accepts = acc.map((b, q) => (b ? sid(q) : null)).filter(Boolean);
+      const popName = i => (i === gamma.length ? SYM.eps : gamma[i]);
+      for (const [from, a, pop, to, push] of moves) {
+        addT(doc, { from: sid(from), to: sid(to), symbol: a === k ? SYM.eps : letterName(a), pop: popName(pop), push: word(push, x => gamma[x]) });
+      }
+      return layoutDoc(doc);
+    },
+    fromDoc(doc) {
+      const S = readStates(doc);
+      const R = readStore(doc);
+      const G = R.gamma.length;
+      const seen = new Set(), moves = [];
+      for (const t of R.ts) {
+        const a = readOf(t, R);
+        const pop = t.pop === undefined || t.pop === null || t.pop === '' || t.pop === R.sym.eps ? G : R.g(t.pop);
+        const mv = [stateIndex(S, t.from), a < 0 ? R.k : a, pop, stateIndex(S, t.to), charsOf(t.push, R.sym).map(R.g)];
+        const key = JSON.stringify(mv);
+        if (!seen.has(key)) { seen.add(key); moves.push(mv); }
+      }
+      const body = R.explicit ? { tag: 0, value: [[...S.accepting], moves] } : { tag: 1, value: moves };
+      return { params: [S.n, R.k, R.m], body, notes: R.explicit ? [] : emptyStackNote(S), names: namesOf({ sigma: R.sigma, stackAlpha: R.gamma }) };
+    },
+    move: (mv, [n, k]) => `${stateName(mv[0])} —${mv[1] === k ? SYM.eps : letterName(mv[1])}→ ${stateName(mv[3])}`
+  };
+})();
+
+/**
+ * One state's moves in a DPDA, exactly as the app's determinism rule allows
+ * them. A move reads a letter or ε and pops a symbol or nothing, and two moves
+ * from a state clash when their reads overlap (ε overlaps everything) and their
+ * pops overlap (popping nothing overlaps everything). Every clash-free set of
+ * moves is one of three kinds, and each has one body:
+ *
+ *   0  one move that reads ε and pops nothing — it is the state's only move;
+ *   1  no move reads ε: each letter has either one move that pops nothing, or
+ *      a row of optional moves, one per stack symbol;
+ *   2  some move reads ε and pops a symbol (so none pops nothing): j is the
+ *      first such symbol; the symbols before it have a column of optional
+ *      letter moves, j has its ε-move, and each symbol after has either an
+ *      ε-move or a column.
+ */
+function dpdaStateShape(n, k, G) {
+  const move = tuple(fin(n), strings(G));
+  const cell = option(move);
+  const rows = table(k, oneOf(move, table(G, cell)));
+  const kinds = [move, rows];
+  if (G > 0) {
+    kinds.push(oneOf(Array.from({ length: G }, (_, j) =>
+      tuple(table(j, table(k, cell)), move, table(G - 1 - j, oneOf(move, table(k, cell)))))));
+  }
+  return oneOf(kinds);
+}
+
+/** A state's body → its moves as { a (letter, or -1 for ε), X (symbol, or G for nothing), mv: [to, push] }. */
+function dpdaStateMoves(s, k, G) {
+  const out = [];
+  if (s.tag === 0) out.push({ a: -1, X: G, mv: s.value });
+  else if (s.tag === 1) {
+    s.value.forEach((row, a) => {
+      if (row.tag === 0) out.push({ a, X: G, mv: row.value });
+      else row.value.forEach((mv, X) => { if (mv) out.push({ a, X, mv }); });
+    });
+  } else {
+    const j = s.value.tag, [before, eps, after] = s.value.value;
+    const column = (col, X) => col.forEach((mv, a) => { if (mv) out.push({ a, X, mv }); });
+    before.forEach((col, X) => column(col, X));
+    out.push({ a: -1, X: j, mv: eps });
+    after.forEach((c, i) => {
+      const X = j + 1 + i;
+      if (c.tag === 0) out.push({ a: -1, X, mv: c.value });
+      else column(c.value, X);
+    });
+  }
+  return out;
+}
+
+/** A state's moves → its body, refusing a set the determinism rule forbids. */
+function dpdaStateBody(moves, k, G) {
+  for (let i = 0; i < moves.length; i++) for (let j = i + 1; j < moves.length; j++) {
+    const x = moves[i], y = moves[j];
+    const reads = x.a < 0 || y.a < 0 || x.a === y.a;
+    const pops = x.X === G || y.X === G || x.X === y.X;
+    if (reads && pops) refuse('It can make two moves from one configuration; a DPDA has at most one.');
+  }
+  const epsEps = moves.find(m => m.a < 0 && m.X === G);
+  if (epsEps) return { tag: 0, value: epsEps.mv };
+  const epsCols = moves.filter(m => m.a < 0);
+  const at = (a, X) => moves.find(m => m.a === a && m.X === X)?.mv || null;
+  if (!epsCols.length) {
+    return {
+      tag: 1,
+      value: Array.from({ length: k }, (_, a) => {
+        const popless = at(a, G);
+        return popless ? { tag: 0, value: popless } : { tag: 1, value: Array.from({ length: G }, (_, X) => at(a, X)) };
+      })
+    };
+  }
+  const j = Math.min(...epsCols.map(m => m.X));
+  const col = X => Array.from({ length: k }, (_, a) => at(a, X));
+  const before = Array.from({ length: j }, (_, X) => col(X));
+  const after = Array.from({ length: G - 1 - j }, (_, i) => {
+    const X = j + 1 + i, e = at(-1, X);
+    return e ? { tag: 0, value: e } : { tag: 1, value: col(X) };
+  });
+  return { tag: 2, value: { tag: j, value: [before, at(-1, j), after] } };
+}
+
+/** The DPDA wing: per state, the moves its determinism rule allows, under either convention. */
+const DPDA = {
+  type: 'DPDA',
+  params: [{ id: 'states', min: 1 }, { id: 'letters', min: 1 }, { id: 'stack symbols', min: 0 }],
+  kind: 'dcf', store: true,
+  shape: ([n, k, m]) => oneOf(
+    tuple(bits(n), table(n, dpdaStateShape(n, k, m + 1))),
+    table(n, dpdaStateShape(n, k, m))
+  ),
+  toDoc(body, [n, k, m]) {
+    const explicit = body.tag === 0;
+    const [acc, states] = explicit ? body.value : [new Array(n).fill(0), body.value];
+    const gamma = storeAlphabet(explicit, m);
+    const G = gamma.length;
+    const doc = newDoc('DPDA', n);
+    doc.sigma = Array.from({ length: k }, (_, a) => letterName(a));
+    doc.stackAlpha = [...gamma];
+    doc.config.pdaParadigm = explicit ? 'explicit' : 'empty';
+    doc.accepts = acc.map((b, q) => (b ? sid(q) : null)).filter(Boolean);
+    states.forEach((s, q) => {
+      for (const { a, X, mv } of dpdaStateMoves(s, k, G)) {
+        addT(doc, {
+          from: sid(q), to: sid(mv[0]), symbol: a < 0 ? SYM.eps : letterName(a),
+          pop: X === G ? SYM.eps : gamma[X], push: word(mv[1], x => gamma[x])
+        });
+      }
+    });
+    return layoutDoc(doc);
+  },
+  fromDoc(doc) {
+    const S = readStates(doc);
+    const R = readStore(doc);
+    const n = S.n, k = R.k, G = R.gamma.length;
+    const per = Array.from({ length: n }, () => []);
+    for (const t of R.ts) {
+      const X = t.pop === undefined || t.pop === null || t.pop === '' || t.pop === R.sym.eps ? G : R.g(t.pop);
+      per[stateIndex(S, t.from)].push({ a: readOf(t, R), X, mv: [stateIndex(S, t.to), charsOf(t.push, R.sym).map(R.g)] });
+    }
+    const states = per.map(moves => dpdaStateBody(moves, k, G));
+    const body = R.explicit ? { tag: 0, value: [[...S.accepting], states] } : { tag: 1, value: states };
+    return { params: [n, k, R.m], body, notes: R.explicit ? [] : emptyStackNote(S), names: namesOf({ sigma: R.sigma, stackAlpha: R.gamma }) };
+  },
+  move: mv => `to ${stateName(mv[0])}`
+};
+
+/**
+ * A store machine's volume as plain moves, for the analyses in
+ * context-free.js: { n, k, G, explicit, acc, moves }, a move being
+ * { from, a (letter, or -1 for ε), pop (symbol, or -1 for nothing), to, push }
+ * with push[0] the symbol that ends on top. Under the explicit convention the
+ * stack starts as [Z] — symbol 0 — and acceptance is by final state; otherwise
+ * it starts empty and acceptance is by empty stack.
+ */
+export function storeMoves(wing, params, body) {
+  const [n, k] = params;
+  const out = [];
+  let explicit = true, acc, G;
+  if (wing.type === 'DPDA') {
+    explicit = body.tag === 0;
+    G = explicit ? params[2] + 1 : params[2];
+    const states = explicit ? body.value[1] : body.value;
+    acc = explicit ? body.value[0] : null;
+    states.forEach((s, q) => {
+      for (const { a, X, mv } of dpdaStateMoves(s, k, G)) out.push({ from: q, a, pop: X === G ? -1 : X, to: mv[0], push: mv[1] });
+    });
+  } else {
+    let moves;
+    if (wing.type === 'Counter') { G = COUNTER_GAMMA.length; [acc, moves] = body; }
+    else {
+      explicit = body.tag === 0;
+      G = explicit ? params[2] + 1 : params[2];
+      [acc, moves] = explicit ? body.value : [null, body.value];
+    }
+    for (const [from, a, pop, to, push] of moves) out.push({ from, a: a === k ? -1 : a, pop: pop === G ? -1 : pop, to, push });
+  }
+  return { n, k, G, explicit, acc: acc ? Uint8Array.from(acc) : null, moves: out };
+}
 
 // ── Turing machines ───────────────────────────────────────────────
 
@@ -459,20 +707,28 @@ function tmWing(type, { twoWay }) {
  * The wings: the machines whose numbering answers a question a theory of
  * computation course asks, and whose map is decided rather than guessed —
  * DFA and NFA (counting languages, state complexity), the Büchi pair (the one
- * place determinism costs ω-regular power), the one-counter automaton (between
- * regular and context-free), and the Turing machine on a one-way and a
- * two-way tape (the busy beaver programme). The other machine types were cut
- * on 2026-10-15: equivalent to one of these (ε-NFA, two-way automata, the
- * queue, two-stack, nondeterministic and multi-tape machines), the same tables
- * read with a dual condition (co-Büchi), endless only by an encoding artefact
+ * place determinism costs ω-regular power), the pushdown pair and the
+ * one-counter automaton (context-free languages, and the edge of what can be
+ * decided about them), and the Turing machine on a one-way and a two-way tape
+ * (the busy beaver programme). The other machine types were cut on
+ * 2026-10-15: equivalent to one of these (ε-NFA, two-way automata, the queue,
+ * two-stack, nondeterministic and multi-tape machines), the same tables read
+ * with a dual condition (co-Büchi), endless only by an encoding artefact
  * (parity priorities), or coloured by short-word guesses where the theory has
- * more to say (pushdown, linear-bounded, probabilistic, transducers).
+ * more to say (linear-bounded, probabilistic, transducers).
+ *
+ * DPDA and NPDA were cut with the last group and came back on 2026-10-16,
+ * once their maps were exact (context-free.js): emptiness and finiteness are
+ * decidable for every pushdown automaton, and universality for a deterministic
+ * one — so the DPDA map has a Σ* colour the NPDA map cannot have.
  */
 const DEFS = [
   detFaWing('DFA'),
   nondetFaWing('NFA'),
   detFaWing('DBA', { omega: 'buchi' }),
   nondetFaWing('NBA', { omega: 'buchi' }),
+  DPDA,
+  NPDA,
   COUNTER,
   tmWing('TM', { twoWay: false }),
   tmWing('ITM', { twoWay: true })
@@ -491,13 +747,13 @@ const BY_TYPE = new Map(WINGS.map(w => [w.type, w]));
 
 /**
  * Machine types with no wing of their own, because another wing already holds
- * their machines. A weak automaton is a Büchi
+ * their machines. PDA is the app's hidden alias of DPDA. A weak automaton is a Büchi
  * automaton whose every cycle sits wholly inside or outside F, and it decides
  * exactly as Büchi does — the app only warns when the structure is not weak —
  * so a weak wing would be the Büchi wing again under another name. The Büchi
  * volume's page says whether it is weak.
  */
-export const WINGLESS_ALIASES = Object.freeze({ DWA: 'DBA', NWA: 'NBA' });
+export const WINGLESS_ALIASES = Object.freeze({ PDA: 'DPDA', DWA: 'DBA', NWA: 'NBA' });
 const ALIAS_KEYS = new Map(Object.entries(WINGLESS_ALIASES).map(([a, t]) => [wingKeyOf(a), wingKeyOf(t)]));
 
 /** Why a machine of a type with no wing has no volume: the sentence every refusal uses. */
@@ -508,7 +764,7 @@ export function unnumbered(type) {
 
 /**
  * The machine type an address's key names when no wing holds it — a type the
- * library numbered before 2026-10-15 (npda, pfa, e-nfa, …) — or null. An old
+ * library numbered before 2026-10-15 (qa, pfa, e-nfa, …) — or null. An old
  * link to one is refused in a sentence rather than read as something else.
  */
 export function unnumberedTypeOfKey(key) {
@@ -516,7 +772,7 @@ export function unnumberedTypeOfKey(key) {
   if (wingByKey(k)) return null;
   return FORMER_TYPES.find(t => wingKeyOf(t) === k || t.toLowerCase().replace('ε', 'e') === k) || null;
 }
-const FORMER_TYPES = ['ε-NFA', '2DFA', '2NFA', 'PFA', 'DcoBA', 'DPA', 'NcoBA', 'NPA', 'DPDA', 'PDA', 'NPDA', 'QA', '2PDA', 'EPDA', 'NDTM', 'MTM', 'LBA', 'Moore', 'Mealy', 'FST', 'PDT', '2DFT'];
+const FORMER_TYPES = ['ε-NFA', '2DFA', '2NFA', 'PFA', 'DcoBA', 'DPA', 'NcoBA', 'NPA', 'QA', '2PDA', 'EPDA', 'NDTM', 'MTM', 'LBA', 'Moore', 'Mealy', 'FST', 'PDT', '2DFT'];
 
 export function wingByKey(key) {
   const k = String(key || '').toLowerCase();
