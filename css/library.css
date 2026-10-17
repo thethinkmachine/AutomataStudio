@@ -689,10 +689,15 @@
   --bab-tm-h: var(--accent);
   --bab-tm-n: var(--fam-tm);
   --bab-tm-x: color-mix(in srgb, var(--text) 18%, transparent);
-  --bab-words-e: color-mix(in srgb, var(--text) 10%, transparent);
-  --bab-words-u: color-mix(in srgb, var(--text) 32%, transparent);
-  --bab-words-o: var(--accent);
-  --bab-words-x: color-mix(in srgb, var(--fam-tm) 45%, transparent);
+  --bab-cf-e: color-mix(in srgb, var(--text) 10%, transparent);
+  --bab-cf-f: var(--fam-mem);
+  --bab-cf-i: var(--accent);
+  --bab-cf-x: color-mix(in srgb, var(--text) 20%, transparent);
+  --bab-dcf-e: color-mix(in srgb, var(--text) 10%, transparent);
+  --bab-dcf-u: color-mix(in srgb, var(--text) 32%, transparent);
+  --bab-dcf-f: var(--fam-mem);
+  --bab-dcf-i: var(--accent);
+  --bab-dcf-x: color-mix(in srgb, var(--text) 20%, transparent);
   --bab-pending: color-mix(in srgb, var(--text) 5%, transparent);
   gap: 34px;
 }
@@ -1061,10 +1066,15 @@
 .bab-swatch[data-kind="tm"][data-cls="h"] { background: var(--bab-tm-h); }
 .bab-swatch[data-kind="tm"][data-cls="n"] { background: var(--bab-tm-n); }
 .bab-swatch[data-kind="tm"][data-cls="x"] { background: var(--bab-tm-x); }
-.bab-swatch[data-kind="words"][data-cls="e"] { background: var(--bab-words-e); }
-.bab-swatch[data-kind="words"][data-cls="u"] { background: var(--bab-words-u); }
-.bab-swatch[data-kind="words"][data-cls="o"] { background: var(--bab-words-o); }
-.bab-swatch[data-kind="words"][data-cls="x"] { background: var(--bab-words-x); }
+.bab-swatch[data-kind="cf"][data-cls="e"] { background: var(--bab-cf-e); }
+.bab-swatch[data-kind="cf"][data-cls="f"] { background: var(--bab-cf-f); }
+.bab-swatch[data-kind="cf"][data-cls="i"] { background: var(--bab-cf-i); }
+.bab-swatch[data-kind="cf"][data-cls="x"] { background: var(--bab-cf-x); }
+.bab-swatch[data-kind="dcf"][data-cls="e"] { background: var(--bab-dcf-e); }
+.bab-swatch[data-kind="dcf"][data-cls="u"] { background: var(--bab-dcf-u); }
+.bab-swatch[data-kind="dcf"][data-cls="f"] { background: var(--bab-dcf-f); }
+.bab-swatch[data-kind="dcf"][data-cls="i"] { background: var(--bab-dcf-i); }
+.bab-swatch[data-kind="dcf"][data-cls="x"] { background: var(--bab-dcf-x); }
 
 .bab-plates-sec { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 30px; align-items: start; }
 .bab-plates-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }

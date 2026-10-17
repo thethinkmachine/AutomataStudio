@@ -59,7 +59,7 @@ function babelVolumeOf(query) {
   return {
     address: found.address, how: found.how, ...(found.regex ? { regex: found.regex } : {}),
     link: webAppLink({ action: 'babel', address: found.address }),
-    note: 'Not a catalogue entry: a volume of AutomataStudio Babel, which numbers every one of its kinds of machine (DFAs, NFAs, Büchi automata, one-counter automata and Turing machines). Its facts are computed from the machine, not written by anyone.'
+    note: 'Not a catalogue entry: a volume of AutomataStudio Babel, which numbers every one of its kinds of machine (DFAs, NFAs, Büchi automata, pushdown automata, one-counter automata and Turing machines). Its facts are computed from the machine, not written by anyone.'
   };
 }
 
@@ -723,7 +723,7 @@ const DEFINITIONS = {
     run: (a, s) => testWordsFor(s.draft.machine, a.alphabet || s.draft.sigma, integer(a.max_length, 4, 0, 6))
   },
   search_library: {
-    access: 'read', args: { query: 'string', limit: 'integer 1..10?' }, description: 'Search the shared machine library for existing machines (title, type, tags; also "type:DFA", "accepts:0110", "badge:minimal"). Use it to point the user at a verified machine instead of building one, or to find one to build on. A query that is a regular expression, a machine code or an AutomataStudio Babel address also returns `babel`: the volume of that machine in AutomataStudio Babel, which numbers every one of its kinds (DFAs, NFAs, Büchi automata, one-counter automata and Turing machines) and needs no network.',
+    access: 'read', args: { query: 'string', limit: 'integer 1..10?' }, description: 'Search the shared machine library for existing machines (title, type, tags; also "type:DFA", "accepts:0110", "badge:minimal"). Use it to point the user at a verified machine instead of building one, or to find one to build on. A query that is a regular expression, a machine code or an AutomataStudio Babel address also returns `babel`: the volume of that machine in AutomataStudio Babel, which numbers every one of its kinds (DFAs, NFAs, Büchi automata, pushdown automata, one-counter automata and Turing machines) and needs no network.',
     run: a => {
       const query = String(a.query || '');
       const babel = babelVolumeOf(query);

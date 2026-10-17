@@ -9,8 +9,13 @@
 //   omega   whether its ω-language is empty, from its lasso cycles — exact
 //   tm      whether it halts from a blank tape — halts, never, or unknown —
 //           from the classifier the Behaviour section uses, on a small budget
-//   words   what it does on the words up to a short length: none accepted,
-//           all accepted, or some — labelled as exactly that
+//   cf      a pushdown or one-counter automaton's language: empty, finite or
+//           infinite — exact, from context-free.js
+//   dcf     a DPDA's: the same, and Σ* — exact, since a deterministic one's
+//           universality is decidable where a nondeterministic one's is not
+//
+// No map is guessed from short words any more: the one-counter automaton's
+// was, until 2026-10-16.
 //
 // The map's cells are volumes, or for a room too large to draw cell by cell,
 // blocks of consecutive volumes each coloured by one sample drawn with a seed
@@ -23,8 +28,8 @@ import { App } from '../core/state.js';
 import { decideMachine, machineGuards, parseMachineInput } from '../machines/index.js';
 import { BEHAVIOUR_MACHINES, classifyBehaviourNow } from '../machines/tm-behaviour.js';
 import { invalidateTransitionIndex } from '../machines/runtime.js';
+import { pushdownClass } from './context-free.js';
 import { dfaOf, languageClass } from './facts.js';
-import { documentOf } from './wings.js';
 import { volumeAt } from './volumes.js';
 
 /** Every answer a cell can give, with its label. `key` is what a cell stores. */
@@ -44,16 +49,19 @@ export const CELL_CLASSES = Object.freeze({
     { key: 'n', label: 'never halts', say: 'proved never to halt' },
     { key: 'x', label: 'unknown', say: 'not settled within the map’s budget' }
   ],
-  words: [
-    { key: 'e', label: 'accepts none', say: 'accepts no word up to the map’s length' },
-    { key: 'u', label: 'accepts all', say: 'accepts every word up to the map’s length' },
-    { key: 'o', label: 'accepts some', say: 'accepts some and rejects some' },
-    { key: 'x', label: 'no verdict', say: 'gives no verdict within the budget' }
+  cf: [
+    { key: 'e', label: '∅', say: 'accepts no word' },
+    { key: 'f', label: 'finite', say: 'accepts finitely many words, and at least one' },
+    { key: 'i', label: 'infinite', say: 'accepts infinitely many words — whether it accepts every word cannot be decided for these machines in general' }
+  ],
+  dcf: [
+    { key: 'e', label: '∅', say: 'accepts no word' },
+    { key: 'u', label: 'Σ*', say: 'accepts every word' },
+    { key: 'f', label: 'finite', say: 'accepts finitely many words, and at least one' },
+    { key: 'i', label: 'infinite, not Σ*', say: 'accepts infinitely many words, but not every word' }
   ]
 });
 
-/** The longest word the map tries, per wing kind 'words'. */
-export const MAP_WORD_LENGTH = 3;
 /** The classifier's step budget per volume, for the map. */
 export const MAP_TM_BUDGET = 2e4;
 
@@ -147,7 +155,7 @@ function tmClass(wing, params, body) {
   return v?.verdict === 'halts' ? 'h' : v?.verdict === 'never' ? 'n' : 'x';
 }
 
-// ── Anything else: its verdicts on short words ──
+// ── Running a volume's document ──
 
 const DECIDE_FIELDS = ['states', 'transitions', 'config', 'machine', 'sigma', 'accepts', 'stackAlpha', 'outputAlpha', 'startId', 'tapeCount'];
 
@@ -183,18 +191,6 @@ export function withVolumeLoaded(doc, fn) {
   }
 }
 
-function wordsUpTo(letters, maxLen) {
-  const out = [[]];
-  let layer = [[]];
-  for (let len = 1; len <= maxLen; len++) {
-    const next = [];
-    for (const w of layer) for (const a of letters) next.push([...w, a]);
-    out.push(...next);
-    layer = next;
-  }
-  return out;
-}
-
 /**
  * A word as the run box would read it → the machine's verdict, with the run
  * box's own parsing (a multi-tape machine reads its input differently) and
@@ -209,27 +205,13 @@ export function decideText(m, raw) {
   return { verdict: r.verdict, output: r.output ?? null };
 }
 
-function wordsClass(wing, params, body) {
-  const doc = documentOf(wing, params, body);
-  return withVolumeLoaded(doc, () => {
-    let acc = 0, rej = 0;
-    for (const w of wordsUpTo(doc.sigma, MAP_WORD_LENGTH)) {
-      let v;
-      try { v = decideText(doc.machine, w.join(''))?.verdict; } catch { v = 'unk'; }
-      if (v === 'acc') acc++;
-      else if (v === 'rej') rej++;
-      else return 'x';
-    }
-    return acc && rej ? 'o' : acc ? 'u' : 'e';
-  });
-}
-
 /** One volume's cell class. */
 export function classifyBody(wing, params, body) {
   if (wing.kind === 'fa') return faClass(wing, params, body);
   if (wing.kind === 'omega') return omegaNonEmpty(wing, params, body) ? 'o' : 'e';
   if (wing.kind === 'tm') return tmClass(wing, params, body);
-  return wordsClass(wing, params, body);
+  if (wing.kind === 'cf' || wing.kind === 'dcf') return pushdownClass(wing, params, body);
+  throw new Error(`No map for a ${wing.type} wing.`);
 }
 
 export function classifyVolume(wing, params, volume) {
@@ -239,5 +221,5 @@ export function classifyVolume(wing, params, volume) {
 
 /** The classes a wing's map uses. */
 export function cellClassesOf(wing) {
-  return CELL_CLASSES[wing.kind] || CELL_CLASSES.words;
+  return CELL_CLASSES[wing.kind];
 }

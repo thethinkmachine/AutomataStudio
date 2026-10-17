@@ -15,6 +15,7 @@ import {
 } from '../js/babel/volumes.js';
 import { formatAddress, fromBase64url, parseAddress, showNumber, toBase64url } from '../js/babel/address.js';
 import { canonicalOf } from '../js/babel/canon.js';
+import { pushdownFacts, shortestAccepted } from '../js/babel/context-free.js';
 import { classifyBody, decideText, tmBehaviour, withVolumeLoaded } from '../js/babel/census.js';
 import { dfaOf, languageClass, minimiseDfa, weakViolation } from '../js/babel/facts.js';
 import { endlessSpelling, finiteTiles, nudge } from '../js/babel/spell.js';
@@ -109,16 +110,18 @@ test('a distribution is its parts over their least common denominator, and nothi
 // The library numbers the machines whose numbering answers a question a
 // theory course asks and whose map is decided (wings.js, DEFS); since
 // 2026-10-15 every other type is refused, in a sentence that names the rest.
-const KEPT = ['DFA', 'NFA', 'DBA', 'NBA', 'Counter', 'TM', 'ITM'];
+// DPDA and NPDA came back on 2026-10-16 with exact maps (context-free.js).
+const KEPT = ['DFA', 'NFA', 'DBA', 'NBA', 'DPDA', 'NPDA', 'Counter', 'TM', 'ITM'];
+const NUMBERS = /numbers DFA, NFA, DBA, NBA, DPDA, NPDA, Counter, TM and ITM machines/;
 
-test('the wings are the seven machines that earn one, and every other type is refused in a sentence', () => {
+test('the wings are the nine machines that earn one, and every other type is refused in a sentence', () => {
   assert.deepEqual(WINGS.map(w => w.type), KEPT);
   assert.equal(new Set(WINGS.map(w => w.key)).size, WINGS.length, 'wing keys are unique');
   for (const [alias, target] of Object.entries(WINGLESS_ALIASES)) assert.equal(wingOf(alias)?.type, target, `${alias} is shelved in ${target}`);
   for (const type of Object.keys(MachineTypes)) {
     if (wingOf(type)) continue;
     const r = readDocument({ machine: type, states: [{ id: 's0' }], transitions: [], sigma: ['a'] });
-    assert.match(r.error, /numbers DFA, NFA, DBA, NBA, Counter, TM and ITM machines; a .+ has no volume here/, type);
+    assert.match(r.error, new RegExp(`${NUMBERS.source}; a .+ has no volume here`), type);
   }
   assert.equal(wingByKey('pfa'), null, 'a removed wing’s key names nothing');
 });
@@ -576,12 +579,12 @@ test('the Entrance reads as you type and lists every wing', () => {
   const page = textOf(host);
   assert.match(page, /Every machine that has ever been conceived,/);
   assert.match(page, /or ever will be\./);
-  assert.match(page, /7 wings/);
+  assert.match(page, /9 wings/);
   // One hexagon per wing: DWA and NWA read into DBA's and NBA's wings, and
   // used to draw those two hexagons a second time.
   const hexes = findAll(host, n => n.classList?.contains('bab-wing-link')).map(textOf);
-  assert.equal(hexes.length, 7);
-  assert.equal(new Set(hexes).size, 7, 'no wing is drawn twice');
+  assert.equal(hexes.length, 9);
+  assert.equal(new Set(hexes).size, 9, 'no wing is drawn twice');
   const input = findAll(host, n => n.classList?.contains('bab-typewriter'))[0];
   input.value = '1537';
   input._listeners.input({});
@@ -750,11 +753,152 @@ test('every wing’s rooms and volumes have addresses that read back', () => {
 });
 
 test('an old link to a wing the library no longer has is refused, never read as a regular expression', () => {
-  for (const text of ['npda-3-2-2', 'pfa-2-2/40', 'e-nfa-2-2', 'mealy', '2dft-1-2-2/7']) {
+  for (const text of ['qa-3-2-2', 'pfa-2-2/40', 'e-nfa-2-2', 'mealy', '2dft-1-2-2/7']) {
     const found = findVolume(text);
     assert.equal(found.kind, 'error', `${text} is refused`);
-    assert.match(found.error, /numbers DFA, NFA, DBA, NBA, Counter, TM and ITM machines/);
+    assert.match(found.error, NUMBERS);
   }
   assert.equal(findVolume('dfa-3-2/977').kind, 'volume');
   assert.equal(findVolume('(a|b)*abb').kind, 'volume', 'a regular expression still reads');
+});
+
+// ── Pushdown wings ────────────────────────────────────────────────
+
+test('the DPDA and NPDA wings are back with the numbering they had before 2026-10-15', () => {
+  // Checked against the wings.js of 51f0b7e^ on 14,242 volumes when they were
+  // restored; these are the bundled examples' addresses under that numbering.
+  const where = {
+    'pda.json': 'dpda-1-6-3/1251191215506',
+    'pda-classic.json': 'dpda-3-2-1/33197442611659',
+    'npda.json': 'npda-3-2-2/22475664005338',
+    'counter-classic.json': 'counter-3-2/13126661857740'
+  };
+  for (const [f, address] of Object.entries(where)) {
+    const doc = JSON.parse(readFileSync(join(EXAMPLES, f), 'utf8'));
+    const loc = locateDocument(doc);
+    assert.equal(formatAddress({ key: loc.wing.key, params: loc.params, volume: loc.volume }), address, f);
+    assert.equal(findVolume(address).kind, 'volume', `${address} opens`);
+  }
+  assert.equal(wingOf('PDA').type, 'DPDA', 'PDA, the app’s alias, is shelved with the DPDAs');
+});
+
+/** A pushdown document from [from, read, pop, push, to] rows; s0 starts. */
+function storeDoc(machine, rows, { accepts = [], paradigm = 'explicit', sigma = ['a', 'b'] } = {}) {
+  const ids = [...new Set(['s0', ...rows.flatMap(r => [r[0], r[4]])])];
+  return {
+    machine, startId: 's0', accepts, sigma, stackAlpha: [], config: { pdaParadigm: paradigm },
+    states: ids.map(id => ({ id, name: id, x: 0, y: 0 })),
+    transitions: rows.map(([from, symbol, pop, push, to], i) => ({ id: `t${i}`, from, to, symbol, pop, push }))
+  };
+}
+
+function classOf(doc) {
+  const loc = locateDocument(doc);
+  assert.ok(!loc.error, loc.error);
+  const { body } = volumeAt(loc.wing, loc.params, loc.volume);
+  return { cls: classifyBody(loc.wing, loc.params, body), shortest: shortestAccepted(loc.wing, loc.params, body) };
+}
+
+test('a pushdown volume’s map colour is decided: empty, finite, infinite — and Σ* for a DPDA', () => {
+  const E = 'ε';
+  const loop = [['s0', 'a', E, E, 's0'], ['s0', 'b', E, E, 's0']];
+  assert.equal(classOf(storeDoc('DPDA', loop, { accepts: ['s0'] })).cls, 'u', 'every word, by final state');
+  assert.equal(classOf(storeDoc('DPDA', loop, { paradigm: 'empty' })).cls, 'u', 'every word, by empty stack');
+  assert.equal(classOf(storeDoc('NPDA', loop, { accepts: ['s0'] })).cls, 'i', 'an NPDA has no Σ* colour: universality is undecidable for it');
+  assert.equal(classOf(storeDoc('DPDA', loop)).cls, 'e');
+  // Every word reaches s1, whose only move is an ε-move into accepting s2: Σ⁺,
+  // or Σ* once s0 accepts too. Acceptance in the ε-run after the last letter counts.
+  const plus = [['s0', 'a', E, E, 's1'], ['s0', 'b', E, E, 's1'], ['s1', E, E, E, 's2'], ['s2', 'a', E, E, 's1'], ['s2', 'b', E, E, 's1']];
+  assert.equal(classOf(storeDoc('DPDA', plus, { accepts: ['s2'] })).cls, 'i');
+  assert.equal(classOf(storeDoc('DPDA', plus, { accepts: ['s0', 's2'] })).cls, 'u');
+  // The stack matters: b pops an A when there is one and keeps Z when there is not.
+  const counting = [['s0', 'a', E, 'A', 's0'], ['s0', 'b', 'A', E, 's0'], ['s0', 'b', 'Z', 'Z', 's0']];
+  assert.equal(classOf(storeDoc('DPDA', counting, { accepts: ['s0'] })).cls, 'u');
+  assert.equal(classOf(storeDoc('DPDA', counting.slice(0, 2), { accepts: ['s0'] })).cls, 'i', 'stuck on b over Z');
+  // After b, an ε-run that never ends: b is accepted, ba never is.
+  const spin = [['s0', 'a', E, E, 's0'], ['s0', 'b', E, E, 's1'], ['s1', E, E, 'A', 's1']];
+  assert.equal(classOf(storeDoc('DPDA', spin, { accepts: ['s0', 's1'] })).cls, 'i');
+  // Only ε, then the same ε-run for ever.
+  const only = classOf(storeDoc('DPDA', [['s0', E, E, 'A', 's0']], { accepts: ['s0'] }));
+  assert.equal(only.cls, 'f');
+  assert.deepEqual(only.shortest, { length: 0, word: [] });
+  // aⁿbⁿ (n ≥ 1) is infinite and its shortest word is ab, in all three wings.
+  for (const f of ['pda-classic.json', 'counter-classic.json']) {
+    const r = classOf(JSON.parse(readFileSync(join(EXAMPLES, f), 'utf8')));
+    assert.equal(r.cls, 'i', f);
+    assert.deepEqual(r.shortest, { length: 2, word: [0, 1] }, f);
+  }
+  const npda = JSON.parse(readFileSync(join(EXAMPLES, 'pda-classic.json'), 'utf8'));
+  npda.machine = 'NPDA';
+  assert.equal(classOf(npda).cls, 'i');
+  const finite = classOf(storeDoc('NPDA', [['s0', 'a', 'Z', 'AZ', 's1'], ['s1', 'b', 'A', E, 's2']], { accepts: ['s2'] }));
+  assert.equal(finite.cls, 'f');
+  assert.deepEqual(finite.shortest, { length: 2, word: [0, 1] });
+});
+
+test('a pushdown volume’s colour and shortest word agree with the simulator on every short word', () => {
+  const rooms = [['dpda', [2, 1, 1]], ['dpda', [2, 2, 1]], ['dpda', [1, 2, 0]], ['npda', [2, 1, 1]], ['npda', [1, 2, 1]], ['counter', [2, 1]]];
+  const seen = new Set();
+  for (const [key, params] of rooms) {
+    const wing = wingByKey(key), shape = roomShape(wing, params), k = params[1];
+    for (let size = 0; size <= 5; size++) {
+      const c = shape.count(size);
+      for (let i = 0n; i < 25n && i < c; i++) {
+        const body = shape.unrank(size, c > 25n ? (i * 7919n) % c : i);
+        const cls = classifyBody(wing, params, body);
+        seen.add(`${key}:${cls}`);
+        const doc = wing.toDoc(body, params);
+        const verdicts = withVolumeLoaded(doc, () => {
+          const out = [];
+          const walk = (w, left) => {
+            out.push([w.length, decideText(doc.machine, w).verdict]);
+            if (left) for (const a of doc.sigma.slice(0, k)) walk(w + a, left - 1);
+          };
+          walk('', 4);
+          return out;
+        });
+        const first = Math.min(...verdicts.filter(v => v[1] === 'acc').map(v => v[0]));
+        const tag = `${key}-${params.join('-')} size ${size}`;
+        if (cls === 'e') assert.equal(first, Infinity, `${tag}: ∅ accepts nothing`);
+        if (cls === 'u') assert.ok(verdicts.every(v => v[1] === 'acc'), `${tag}: Σ* accepts every short word`);
+        const sw = shortestAccepted(wing, params, body);
+        if (cls === 'e') assert.equal(sw, null);
+        else if (sw.length <= 4) assert.equal(sw.length, first, `${tag}: the shortest word is the simulator's first`);
+        else assert.equal(first, Infinity, `${tag}: nothing shorter than its shortest word`);
+      }
+    }
+  }
+  for (const c of ['dpda:e', 'dpda:f', 'dpda:i', 'dpda:u', 'npda:e', 'npda:f', 'npda:i', 'counter:e', 'counter:i']) assert.ok(seen.has(c), `${c} occurs`);
+});
+
+test('a pushdown volume’s page says what it accepts, decided, and how it is read', () => {
+  seedTab();
+  context.renderLibraryView();
+  const host = context.document.getElementById('lib-content');
+  context.go('babel-volume', 'dpda-3-2-1/33197442611659', { reset: true });
+  let page = textOf(host);
+  assert.match(page, /deterministic context-free language/);
+  assert.match(page, /Accepts infinitely many words, but not every one; the shortest is ab\./);
+  assert.match(page, /Languageinfinite, not every word/);
+  assert.match(page, /Shortestab/);
+  assert.match(page, /a bottom marker Z, acceptance by final state/);
+  context.go('babel-volume', 'dpda-1-6-3/1251191215506', { reset: true });
+  page = textOf(host);
+  assert.match(page, /acceptance by empty stack/);
+  assert.match(page, /the shortest is ε/);
+  const legend = () => textOf(findAll(host, n => n.classList?.contains('bab-census'))[0]);
+  context.go('babel-room', 'npda-2-1-1', { reset: true });
+  assert.match(legend(), /infinite/);
+  assert.doesNotMatch(legend(), /Σ\*/, 'no Σ* colour for an NPDA');
+  context.go('babel-room', 'dpda-2-1-1', { reset: true });
+  assert.match(legend(), /Σ\*/);
+});
+
+test('universality is asked of a DPDA only', () => {
+  const wing = wingByKey('npda');
+  const params = [2, 1, 1];
+  const r = pushdownFacts(wing, params, volumeAt(wing, params, 5n).body);
+  assert.equal(typeof r.empty, 'boolean');
+  assert.equal(typeof r.finite, 'boolean');
+  assert.equal(r.universal, null);
 });
