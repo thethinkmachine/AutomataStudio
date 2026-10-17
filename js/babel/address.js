@@ -64,35 +64,51 @@ export function formatAddress({ key, params = null, volume = null, wingNumber = 
 
 /** A number for an address: digits, or ~base64url past LONG_DIGITS. */
 export function numberText(n) {
-  const s = BigInt(n).toString();
-  return s.length > LONG_DIGITS ? `~${toBase64url(BigInt(n))}` : s;
+  n = BigInt(n);
+  // Compared, not measured: writing a long number in decimal to count its digits is the slow part.
+  return n >= 10n ** BigInt(LONG_DIGITS) ? `~${toBase64url(n)}` : n.toString();
 }
 
 const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+// Both directions go through the binary digits six at a time. Shifting the
+// whole number by six bits a character was quadratic: 25 seconds for the
+// addresses on one volume page of a 300-state DFA room.
 
 /** A non-negative BigInt → base64url, most significant first, no padding. */
 export function toBase64url(n) {
   n = BigInt(n);
   if (n === 0n) return 'A';
+  const bin = n.toString(2);
+  const bits = bin.padStart(Math.ceil(bin.length / 6) * 6, '0');
   let out = '';
-  while (n > 0n) { out = ALPHA[Number(n & 63n)] + out; n >>= 6n; }
+  for (let i = 0; i < bits.length; i += 6) out += ALPHA[parseInt(bits.slice(i, i + 6), 2)];
   return out;
 }
 
 export function fromBase64url(s) {
-  let n = 0n;
+  if (!s) return 0n;
+  let bits = '';
   for (const ch of s) {
     const v = ALPHA.indexOf(ch);
     if (v < 0) return null;
-    n = (n << 6n) | BigInt(v);
+    bits += v.toString(2).padStart(6, '0');
   }
-  return n;
+  return BigInt(`0b${bits}`);
 }
 
 /** 6836674958 → "6,836,674,958". */
 export function groupDigits(n) {
+  // In threes from the right, by slicing: the lookahead regex this replaced
+  // scanned to the end from every digit, seconds on a deep room's numbers.
   const s = BigInt(n).toString();
-  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const sign = s[0] === '-' ? '-' : '';
+  const d = sign ? s.slice(1) : s;
+  if (d.length <= 3) return s;
+  const head = d.length % 3 || 3;
+  const parts = [d.slice(0, head)];
+  for (let i = head; i < d.length; i += 3) parts.push(d.slice(i, i + 3));
+  return sign + parts.join(',');
 }
 
 /**

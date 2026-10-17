@@ -113,22 +113,80 @@ export function bits(n) {
 
 // ── Mixed radix: the finite products ─────────────────────────────
 
+// A long number is split in halves, not peeled a digit at a time: peeling
+// divides the whole number once per digit, which is quadratic in its length —
+// 2.5 s for one volume of a 300-state DFA room, and the deep map reads hundreds.
+// Halving divides by the product of the low half's radices and recurses, so
+// the work is a few big divisions (fast in V8) instead of a long row of small
+// ones. Short runs keep the plain loop. The digits are the same either way.
+const SPLIT_FROM = 48;
+
+/** The product of radices[lo … hi). */
+export function radixProduct(radices, lo = 0, hi = radices.length) {
+  if (hi - lo <= 16) {
+    let p = ONE;
+    for (let i = lo; i < hi; i++) p *= radices[i];
+    return p;
+  }
+  const mid = (lo + hi) >> 1;
+  return radixProduct(radices, lo, mid) * radixProduct(radices, mid, hi);
+}
+
+/**
+ * The products of a row's first i entries, worked out when asked — from the
+ * nearest one already known, by a short multiply or division — and only a few
+ * kept: a row as long as a big room's number has a product per entry as long
+ * as the number, which held all at once is the square of its length.
+ * `whole`, when known, is the product of the entire row.
+ */
+export function prefixProducts(row, whole = null) {
+  const n = row.length;
+  const known = new Map([[0, ONE]]);
+  if (whole !== null) known.set(n, whole);
+  return i => {
+    let v = known.get(i);
+    if (v !== undefined) return v;
+    let near = 0;
+    for (const k of known.keys()) if (Math.abs(k - i) < Math.abs(near - i)) near = k;
+    v = near < i ? known.get(near) * radixProduct(row, near, i) : known.get(near) / radixProduct(row, i, near);
+    if (known.size > 72) for (const k of known.keys()) { if (k !== 0 && k !== n) { known.delete(k); break; } }
+    known.set(i, v);
+    return v;
+  };
+}
+
 /** Digits → number, the first digit least significant. */
-function fromDigits(digits, radices) {
-  let r = ZERO;
-  for (let i = digits.length - 1; i >= 0; i--) r = r * radices[i] + digits[i];
-  return r;
+function fromDigits(digits, radices, lo = 0, hi = digits.length) {
+  if (hi - lo <= SPLIT_FROM) {
+    let r = ZERO;
+    for (let i = hi - 1; i >= lo; i--) r = r * radices[i] + digits[i];
+    return r;
+  }
+  const mid = (lo + hi) >> 1;
+  return fromDigits(digits, radices, lo, mid) + radixProduct(radices, lo, mid) * fromDigits(digits, radices, mid, hi);
 }
 
 /** Number → digits under the given radices, the first least significant. */
 function toDigits(r, radices) {
   const out = new Array(radices.length);
-  for (let i = 0; i < radices.length; i++) {
-    const b = radices[i];
-    out[i] = r % b;
-    r /= b;
-  }
+  digitsInto(out, r, radices, 0, radices.length);
   return out;
+}
+
+// The last digit takes whatever is left modulo its radix, as the loop always did.
+function digitsInto(out, r, radices, lo, hi) {
+  if (hi - lo <= SPLIT_FROM) {
+    for (let i = lo; i < hi; i++) {
+      const b = radices[i];
+      out[i] = r % b;
+      r /= b;
+    }
+    return;
+  }
+  const mid = (lo + hi) >> 1;
+  const P = radixProduct(radices, lo, mid);
+  digitsInto(out, r % P, radices, lo, mid);
+  digitsInto(out, r / P, radices, mid, hi);
 }
 
 /** A finite product of finite parts: one digit per part. */
@@ -218,16 +276,10 @@ export function table(n, A) {
     return {
       part: 'table', finite: true, total, n, of: A,
       count: s => (s === 0 ? total : ZERO),
-      unrank: (s, r) => {
-        const out = new Array(n);
-        for (let i = 0; i < n; i++) { out[i] = A.unrank(0, r % B); r /= B; }
-        return out;
-      },
+      unrank: (s, r) => toDigits(r, new Array(n).fill(B)).map(d => A.unrank(0, d)),
       rank: v => {
         if (!Array.isArray(v) || v.length !== n) throw badValue('table');
-        let r = ZERO;
-        for (let i = n - 1; i >= 0; i--) r = r * B + A.rank(v[i]).r;
-        return { s: 0, r };
+        return { s: 0, r: fromDigits(v.map(x => A.rank(x).r), new Array(n).fill(B)) };
       },
       radices: () => {
         const one = A.radices ? A.radices() : [B];

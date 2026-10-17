@@ -11,9 +11,11 @@ import { cellClassesOf, classifyVolume } from '../js/babel/census.js';
 import { handleBabelMessage } from '../js/babel/babel-worker-core.js';
 import { activeCensusForTests, resetBabelUiForTests } from '../js/babel/babel-ui.js';
 import {
-  MAP_FLOOR, MAP_MAX_CELL, MAX_LEVELS, VOID, blockAt, cellAt, cellOfVolume, deepLayout, depthOf, depthRange, fitCamera,
-  makeCamera, mapClassifier, panBy, readTile, samplesFor, samplesOf, visibleTiles, zoomAt
+  MAP_FLOOR, MAP_MAX_CELL, VOID, blockAt, cellAt, cellOfVolume, deepLayout, depthOf, depthRange, fitCamera,
+  makeCamera, mapClassifier, panBy, readTile, samplesFor, samplesOf, sizeLayout, stripSamples, visibleTiles, zoomAt
 } from '../js/babel/deep-map.js';
+import { volumesBefore } from '../js/babel/shape.js';
+import { volumeAt } from '../js/babel/volumes.js';
 
 const VIEW = { w: 900, h: 560 };
 
@@ -231,7 +233,15 @@ function seedTab() {
   context.setActiveWorkspaceId('w0');
 }
 
-test('a finite room’s map is the deep map, and its bar counts what is on screen; an endless room keeps the census map', async () => {
+async function until(fn, what) {
+  for (let i = 0; i < 150; i++) {
+    if (fn()) return;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  assert.fail(`timed out waiting for ${what}`);
+}
+
+test('every room’s map is the deep map: a finite room’s bar counts what is on screen, an endless room starts at its sizes', async () => {
   seedTab();
   resetBabelUiForTests();
   context.renderLibraryView();
@@ -241,35 +251,136 @@ test('a finite room’s map is the deep map, and its bar counts what is on scree
   assert.match(textOf(host), /Point at the map/);
   // The tiles are read off the main thread (here: after a tick each); the bar fills as they land.
   const barText = () => textOf(findAll(host, n => n.classList?.contains('bab-census'))[0]);
-  for (let i = 0; i < 100 && !/on screen/.test(barText()); i++) await new Promise(r => setTimeout(r, 100));
+  await until(() => /every volume read|machines read per block/.test(barText()), 'the census bar');
   const bar = barText();
-  assert.match(bar, /on screen · 5 machines read per block/);
+  // dfa-3-2 fits on one screen at its bottom level, one volume a cell: the bar
+  // is the room's exact census and says so, never "5 machines read per block".
+  assert.match(bar, /the whole room · every volume read/);
+  assert.doesNotMatch(bar, /read per block/);
   assert.match(bar, /something else\s*[1-9]/);
+  const counts = [...bar.matchAll(/(?:∅|Σ\*|cofinite|else)\s*([\d,]+)/g)].map(m => Number(m[1].replace(/,/g, '')));
+  assert.equal(counts.reduce((a, b) => a + b, 0), 5832);
+
+  // An endless room has no whole to fit: its map opens on the row of its sizes.
   context.go('babel-room', 'counter-2-2', { reset: true });
-  assert.equal(findAll(host, n => n.classList?.contains('bab-deep')).length, 0);
-  assert.equal(findAll(host, n => n.classList?.contains('bab-map')).length, 1);
-  // Back to a finite room: the endless room's census stops reading.
+  assert.equal(findAll(host, n => n.classList?.contains('bab-deep')).length, 1);
+  assert.equal(findAll(host, n => n.classList?.contains('bab-map')).length, 0);
+  const scaleText = () => textOf(findAll(host, n => n.classList?.contains('bab-deep-scale'))[0]);
+  await until(() => /sizes 0–/.test(scaleText()), 'the shelf');
+  assert.match(scaleText(), /^1 cell = 1 size · sizes 0–\d+$/);
+  // Any class with a count: what the classes are called is the census's business.
+  await until(() => /[^\d\s,]\s*[1-9]/.test(barText().replace(/on screen.*$/, '')), 'the shelf’s census');
+  // Enter goes into the size at the centre, and from there it is a finite room's map.
+  const canvas = findAll(host, n => n.classList?.contains('bab-deep-canvas'))[0];
+  const press = key => canvas._listeners.keydown({ key, preventDefault() {}, stopPropagation() {} });
+  press('Enter');
+  await until(() => /^size \d+ · /.test(scaleText()), 'going into a size');
+  assert.match(scaleText(), /^size \d+ · 1 cell (=|≈) .* · level \d+ of \d+$/);
+  // Out past the whole size is the shelf again.
+  press('Home');
+  await until(() => /^1 cell = 1 size/.test(scaleText()), 'back to the shelf');
+  // The Plates view reads a census; the map stops it.
+  const plates = findAll(host, n => n.classList?.contains('bab-toggle') && /Plates/.test(textOf(n)))[0];
+  plates._listeners.click({ preventDefault() {} });
   assert.notEqual(activeCensusForTests(), null);
-  context.go('babel-room', 'dfa-3-2', { reset: true });
+  const map = findAll(host, n => n.classList?.contains('bab-toggle') && /Map/.test(textOf(n)))[0];
+  map._listeners.click({ preventDefault() {} });
   assert.equal(activeCensusForTests(), null);
 });
 
-test('a room too deep to fly through has no deep layout, and its page keeps the census map', () => {
-  // dfa-300-300 is 90,000 levels deep: its layout ran out of memory.
+test('an endless room’s sizes each lay out as a finite room, numbered as the room numbers them', () => {
+  const wing = wingByKey('counter'), params = [2, 2];
+  const shape = roomShape(wing, params);
+  for (const s of [0, 1, 3, 6]) {
+    const L = sizeLayout(wing, params, s);
+    assert.equal(L.total, shape.count(s));
+    assert.equal(L.base, volumesBefore(shape, s));
+    assert.equal(L.sizes[L.D], 1n);
+    // The size's last volume, found through its layout, is the room's last volume of that size.
+    const c = cellOfVolume(L, L.total - 1n);
+    assert.equal(L.base + blockAt(L, L.D, c.X, c.Y).lo, volumesBefore(shape, s + 1) - 1n);
+  }
+  const strip = handleBabelMessage({ id: 2, key: 'counter', params, type: 'strip', from: 0, count: 4, samples: 1 });
+  assert.equal(strip.type, 'strip');
+  assert.equal(strip.cells.length, 4);
+  assert.ok([...strip.cells].every(k => k !== VOID));
+  const tile = handleBabelMessage({ id: 3, key: 'counter', params, type: 'tile', size: 3, level: 0, tx: '0x0', ty: '0x0', samples: 1 });
+  assert.equal(tile.type, 'tile');
+  assert.equal(tile.lo, '0');
+  assert.equal(BigInt(`0x${tile.hi}`), shape.count(3));
+  // The shelf's samples for a size are volumes of that size.
+  for (const v of stripSamples(wing, params, 3, 5)) assert.equal(volumeAt(wing, params, v).size, 3);
+});
+
+test('a room 90,000 levels deep has a map, laid out in a moment', () => {
+  // dfa-300-300 ran out of memory when every level held its sizes as BigInts,
+  // and rooms past 2,500 levels kept the census map.
   const started = performance.now();
-  assert.equal(deepLayout(wingByKey('dfa'), [300, 300]), null);
-  assert.equal(handleBabelMessage({ id: 1, key: 'dfa', params: [300, 300], type: 'tile', level: 0, tx: '0', ty: '0', samples: 1 }).type, 'failed');
-  assert.ok(performance.now() - started < 5000);
-  // Just inside the line, every level reaches single volumes.
-  const L = deepLayout(wingByKey('dfa'), [100, 20]);
-  assert.ok(L.D > 2000 && L.D <= MAX_LEVELS);
+  const L = deepLayout(wingByKey('dfa'), [300, 300]);
+  assert.ok(L && L.D > 80000, `D = ${L?.D}`);
+  assert.equal(L.sizes[0], L.total);
   assert.equal(L.sizes[L.D], 1n);
+  assert.ok(performance.now() - started < 5000);
+  // Deep rooms read their tiles, and send back the block's run with them.
+  const reply = handleBabelMessage({ id: 1, key: 'dfa', params: [60, 60], type: 'tile', level: 0, tx: '0', ty: '0', samples: 1 });
+  assert.equal(reply.type, 'tile');
+  assert.equal(reply.lo, '0');
   seedTab();
   resetBabelUiForTests();
   context.renderLibraryView();
   context.go('babel-room', 'dfa-120-50', { reset: true });
   const host = context.document.getElementById('lib-content');
-  assert.equal(findAll(host, n => n.classList?.contains('bab-deep')).length, 0);
-  assert.equal(findAll(host, n => n.classList?.contains('bab-map')).length, 1);
-  assert.match(textOf(host), /Too deep to fly through/);
+  assert.equal(findAll(host, n => n.classList?.contains('bab-deep')).length, 1);
+  assert.doesNotMatch(textOf(host), /Too deep to fly through/);
+  resetBabelUiForTests();   // its tiles are slow to read: stop the map
+});
+
+test('the new layout cuts every room as the old one did: a 4,000-level room’s grid holds to its digits', () => {
+  // Built from digit indices rather than BigInt sizes, a layout must still be
+  // the same layout: a block's children are runs of its volumes in number order.
+  const L = deepLayout(wingByKey('tm'), [40, 40]);
+  assert.ok(L.D > 2500);
+  for (const l of [1, 2, Math.floor(L.D / 2), L.D - 1, L.D]) {
+    const lv = L.levels[l - 1];
+    const fan = Number((L.sizes[l - 1] + lv.child - 1n) / lv.child);
+    assert.ok(fan <= lv.cols * lv.rows, `level ${l}: ${fan} children in ${lv.cols} × ${lv.rows}`);
+    assert.equal(L.W[l], L.W[l - 1] * lv.colsB);
+  }
+  for (let t = 0; t < 6; t++) {
+    const v = randomBelow(L.total, t * 31 + 7);
+    const c = cellOfVolume(L, v);
+    assert.equal(blockAt(L, L.D, c.X, c.Y).lo, v);
+  }
+});
+
+test('a jump across 10,000 levels lands in one step, where walking there would', () => {
+  // The rail dragged from top to bottom: walking a level at a time multiplied
+  // the camera's cell 10,000 times (9 s back to the top of dfa-300-300).
+  const L = deepLayout(wingByKey('dfa'), [100, 100]);
+  const view = { w: 900, h: 560, inset: 40 };
+  const cam = makeCamera(L, view), r = depthRange(L, view);
+  const started = performance.now();
+  zoomAt(cam, L, view, 10 ** (depthOf(cam, L) - r.bottom), 450, 280);
+  assert.equal(cam.L, L.D);
+  assert.ok(Math.abs(depthOf(cam, L) - r.bottom) < 1e-6);
+  assert.ok(blockAt(L, cam.L, cam.AX, cam.AY), 'the centre is a volume');
+  zoomAt(cam, L, view, 10 ** (depthOf(cam, L) - r.top), 450, 280);
+  assert.equal(cam.L, 1);
+  assert.ok(Math.abs(depthOf(cam, L) - r.top) < 1e-6);
+  assert.ok(performance.now() - started < 2000);
+  // And a short move is the walk itself, level by level, unchanged.
+  const a = makeCamera(L, view), b = makeCamera(L, view);
+  for (let i = 0; i < 40; i++) zoomAt(a, L, view, 1.25, 300, 200);
+  zoomAt(b, L, view, 1.25 ** 40, 300, 200);
+  assert.equal(a.L, b.L);
+});
+
+test('a size is laid out by its ranks’ decimal digits: full 10 × 10 grids, empty only past its last volume', () => {
+  const L = sizeLayout(wingByKey('counter'), [2, 2], 4);
+  assert.deepEqual(L.levels.map(lv => [lv.cols, lv.rows]), [[10, 5], [10, 10], [10, 10]]);
+  // Every block but the last is full: narrowed as one huge digit, a run of 7
+  // in a 3 × 3 left a hole at the end of every block.
+  for (let l = 1; l < L.D; l++) assert.equal(L.sizes[l], L.sizes[l + 1] * BigInt(L.levels[l].cols * L.levels[l].rows));
+  const c = cellOfVolume(L, L.total);
+  assert.equal(blockAt(L, L.D, c.X, c.Y), null, 'past the last volume is past the room');
 });

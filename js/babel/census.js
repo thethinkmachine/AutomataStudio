@@ -44,8 +44,12 @@ export const CELL_CLASSES = Object.freeze({
     { key: 'e', label: 'empty', say: 'accepts no ω-word' },
     { key: 'o', label: 'non-empty', say: 'accepts some ω-word' }
   ],
+  // A machine that stops before its first step — its start state halts — is
+  // half of every TM room (F is the number's lowest part, so every odd volume
+  // starts in it). Counted as "halts" it buried the machines that do something.
   tm: [
-    { key: 'h', label: 'halts', say: 'halts from a blank tape' },
+    { key: 'h', label: 'halts', say: 'halts from a blank tape after one step or more' },
+    { key: 'z', label: 'halts at once', say: 'stops before its first step' },
     { key: 'n', label: 'never halts', say: 'proved never to halt' },
     { key: 'x', label: 'unknown', say: 'not settled within the map’s budget' }
   ],
@@ -152,7 +156,8 @@ const MAP_TM_OPTS = { budget: MAP_TM_BUDGET, segment: 0, far: 0, loops: 0, ngram
 
 function tmClass(wing, params, body) {
   const v = tmBehaviour(wing, params, body, MAP_TM_OPTS);
-  return v?.verdict === 'halts' ? 'h' : v?.verdict === 'never' ? 'n' : 'x';
+  if (v?.verdict === 'halts') return v.steps ? 'h' : 'z';
+  return v?.verdict === 'never' ? 'n' : 'x';
 }
 
 // ── Running a volume's document ──

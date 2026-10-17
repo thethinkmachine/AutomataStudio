@@ -486,8 +486,11 @@ export function diagramArtSvg(target, hue = FAMILY_HUES[categoryOf(target.machin
 
 /**
  * How an edge is labelled in a figure: its symbol, and a transducer's output
- * after a slash. Null — no label — for a machine whose moves say more than a
- * figure can print (a stack, a tape), where a half-label would mislead.
+ * after a slash. A one-tape Turing machine's move is the whole rule, as the
+ * canvas writes it (`1 → ⊔, R`), drawn one rule to a line (`stacked`): without
+ * it the figure was arrows with nothing on them, and a TM is its rules. Null —
+ * no label — for a machine whose moves say more than a figure can print (a
+ * stack, several tapes), where a half-label would mislead.
  */
 export function edgeLabelOf(machine) {
   const cfg = getMachineConfig(machine) || {};
@@ -495,6 +498,12 @@ export function edgeLabelOf(machine) {
   if (cat === 'fa' || cat === 'omega') return t => (t.symbol === undefined ? null : String(t.symbol));
   if (machine === 'Mealy' || machine === 'FST') return t => (t.symbol === undefined ? null : `${t.symbol}/${t.output ?? ''}`);
   if (cfg.isTransducer && machine === 'Moore') return t => (t.symbol === undefined ? null : String(t.symbol));
+  const def = machineDef(machine);
+  if (def?.family === 'turing' && !def.multiTape) {
+    const rule = t => (t.symbol === undefined ? null : `${t.symbol} → ${t.write ?? t.symbol}, ${t.dir ?? 'S'}`);
+    rule.stacked = true;
+    return rule;
+  }
   return null;
 }
 
@@ -526,7 +535,8 @@ export function namedDiagram(target, { w = 640, h = null, live = false } = {}) {
   const sk = sketchFromTarget(target, labelOf);
   h = h || Math.round(w / sketchAspect(sk));
   const labels = !!labelOf && sk.nodes.length <= 14 && sk.edges.length <= 36;
-  return { svg: drawSketch(sk, { w, h, names: true, labels, live, label: 'The machine’s diagram' }), w, h, rootOf: sk.rootOf };
+  const stacked = !!labelOf?.stacked;
+  return { svg: drawSketch(sk, { w, h, names: true, labels, live, stacked, label: 'The machine’s diagram' }), w, h, rootOf: sk.rootOf };
 }
 
 /**

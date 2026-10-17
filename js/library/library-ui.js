@@ -1340,6 +1340,7 @@ export function behaviourSection(e, { target = null } = {}) {
   const b = e.behaviour;
   let line;
   if (!b) line = null;
+  else if (b.verdict === 'halts' && !Number(b.steps)) line = h('p', { class: 'lib-behaviour-say', text: 'Halts at once: from a blank tape it stops before taking a single step.' });
   else if (b.verdict === 'halts') line = h('p', { class: 'lib-behaviour-say' }, 'Halts from a blank tape after ', h('strong', { text: Number(b.steps).toLocaleString('en-US') }), ` steps${b.ones !== undefined ? `, leaving ${Number(b.ones).toLocaleString('en-US')} non-blank cells` : ''}.`);
   else if (b.verdict === 'never') line = h('p', { class: 'lib-behaviour-say' }, 'Never halts from a blank tape. Proven: ', METHOD_LABEL[b.method] || b.method, b.period ? `, period ${b.period}.` : '.');
   else line = h('p', { class: 'lib-behaviour-say', text: 'Whether it halts from a blank tape was not settled within the library’s step budget.' });

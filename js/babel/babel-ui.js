@@ -56,10 +56,14 @@ import { asSketchDfa, dfaOf, firstWords, languageClass, minimiseDfa, weakViolati
 import { endlessSpelling, finiteTiles, neighbours, nudge, conventionsOf } from './spell.js';
 import { askBabel } from './babel-client.js';
 import { deepMapView, resetDeepMapsForTests } from './deep-map-ui.js';
-import { MAX_LEVELS, deepLayout, samplesFor } from './deep-map.js';
+import { deepLayout, samplesFor } from './deep-map.js';
 import { findVolume, volumeNamedBy } from './find.js';
-import { openVolume, randomVolume, roomId, roomShape, roomTotal, roomsOfWeight, seededBelow, wingCountUpTo, wingNumberOf } from './volumes.js';
+import { openVolume, randomVolume, roomId, roomShape, roomTotal, roomsOfWeight, seededBelow, wingCountUpTo, wingNumberBelow } from './volumes.js';
 import { WINGS, letterName, roomProblem, wingByKey, wingIsFinite, wingOf, withReaderNames } from './wings.js';
+
+/** A wing number is shown while it has at most 30 digits; a room's range while it starts below 10⁶⁰. */
+const SHOWN_WING_NUMBER = 10n ** 30n;
+const SHOWN_RANGE = 10n ** 60n;
 
 // ── State ─────────────────────────────────────────────────────────
 
@@ -71,7 +75,6 @@ const B = {
   notes: new Map(),       // address → how the Finder read the machine
   view: 'map',            // a room: 'map' or 'plates'
   from: new Map(),        // room id → the first volume on the plates page
-  zoom: new Map(),        // room id → stack of zoomed blocks (an endless room's map)
   lit: new Map(),         // room id → the census class picked on its bar
   canonicalOnly: false,
   wingRoom: new Map(),    // wing key → params last chosen on a wing's page
@@ -83,7 +86,7 @@ const B = {
 
 export function resetBabelUiForTests() {
   B.wing = 'dfa'; B.typed = ''; B.names.clear(); B.ownLetters = true; B.notes.clear(); B.view = 'map';
-  B.from.clear(); B.zoom.clear(); B.lit.clear(); B.canonicalOnly = false; B.wingRoom.clear(); B.verdicts.clear();
+  B.from.clear(); B.lit.clear(); B.canonicalOnly = false; B.wingRoom.clear(); B.verdicts.clear();
   B.census.clear(); B.active = null; B.current = null;
   resetDeepMapsForTests();
 }
@@ -615,8 +618,10 @@ function roomRange(wing, params) {
   const total = roomTotal(wing, params);
   if (total === null || total === 0n) return null;
   try {
-    const lo = wingNumberOf(wing, params, 0n);
-    return { lo, hi: lo + total - 1n };
+    // A range past SHOWN_RANGE is not worth its cost: every room as heavy as
+    // this one would be built to say a number no one reads.
+    const lo = wingNumberBelow(wing, params, 0n, SHOWN_RANGE);
+    return lo === null ? null : { lo, hi: lo + total - 1n };
   } catch { return null; }
 }
 
@@ -794,11 +799,11 @@ function pageRoom(id) {
       h('span', { class: 'bab-room-count', title: range ? `${groupDigits(shape.total)} volumes: ${wing.type} № ${groupDigits(range.lo)} to № ${groupDigits(range.hi)}` : 'An endless room: its volumes are ordered by size' },
         shape.finite ? `${shape.total.toString().length > 15 ? shortCount(shape.total) : groupDigits(shape.total)} volumes` : `∞ · ${[0, 1, 2, 3].map(s => groupDigits(shape.count(s))).join(', ')}, … by size`)),
     views));
-  // A finite room too deep to fly through has no deep layout and keeps the census map.
-  const deep = B.view !== 'plates' && shape.finite && deepLayout(wing, params);
-  if (deep) {
-    // The deep map reads its own tiles: a census left active (an endless room
-    // just visited) would otherwise go on reading the whole of its room.
+  // Every room's map is the deep map: a finite room from the whole room down,
+  // an endless one from the row of its sizes down.
+  if (B.view !== 'plates') {
+    // The deep map reads its own tiles: a census left active (the Plates
+    // view's) would otherwise go on reading the whole of its room.
     B.active = null;
     const vc = screenCensus(wing, params);
     page.append(censusBar(vc));
@@ -807,20 +812,20 @@ function pageRoom(id) {
   }
   const c = censusOf(wing, params);
   page.append(censusBar(c));
-  page.append(B.view === 'plates' ? roomPlates(wing, params, c) : roomMap(c));
-  if (B.view !== 'plates' && shape.finite) page.append(h('p', { class: 'bab-deep-how', text: `Too deep to fly through (more than ${groupDigits(MAX_LEVELS)} levels): this room’s map zooms a click at a time` }));
+  page.append(roomPlates(wing, params, c));
   startCensus(c);
   return page;
 }
 
-// ── A finite room's map: the deep map ───────────────────────────────
+// ── A room's map: the deep map ─────────────────────────────────────
 
 /**
  * The census bar's reading of the deep map: what is on screen, every machine
  * read counted. Shaped like a room's census so censusBar draws either.
  */
 function screenCensus(wing, params) {
-  const samples = samplesFor(wing);
+  const shape = roomShape(wing, params);
+  const samples = samplesFor(wing, shape.finite ? deepLayout(wing, params) : null);
   return {
     wing, params, id: roomId(wing, params), classes: cellClassesOf(wing), watchers: [],
     // One cell outstanding until the first count: the bar reads "reading…", not an empty screen.
@@ -833,6 +838,7 @@ function screenCensus(wing, params) {
 
 function deepRoomMap(wing, params, vc) {
   let pane = null;
+  const screenNote = vc.note;
   const view = deepMapView(wing, params, {
     lit: B.lit.get(vc.id) || null,
     reading: info => paintDeepReading(pane, wing, params, info),
@@ -840,12 +846,30 @@ function deepRoomMap(wing, params, vc) {
     open: volume => go('babel-volume', volumeAddress(wing, params, volume)),
     tally: t => {
       vc.counts = t.counts; vc.done = t.done; vc.cells = t.total;
+      // At the bottom level every count is a volume's own answer, and when the
+      // whole room is on screen it is the room's exact census: said as a
+      // sample ("5 machines read per block"), an exact count read as a guess.
+      const whole = t.exact && BigInt(t.done) === roomShape(wing, params).total;
+      vc.unit = t.exact ? ' volumes on screen' : ' of the machines read on screen';
+      vc.note = whole ? 'the whole room · every volume read' : t.exact ? 'on screen · every volume read' : screenNote;
       notifyCensus(vc);
     }
   });
   pane = view.pane;
   paintDeepReading(pane, wing, params, null);
   return view.el;
+}
+
+/**
+ * A plate's number. Plates side by side are neighbours on one shelf, so they
+ * share their leading digits and differ at the end: a long number is shown by
+ * its tail (…772,991,524), whole in the tooltip. Cut at its end, as the
+ * caption's overflow did, every plate at the bottom of a deep map read the same
+ * "1,573,904,77…".
+ */
+function plateNumber(n, cls) {
+  const whole = groupDigits(n);
+  return h('span', { class: cls, title: `№ ${whole}`, text: whole.length > 11 ? `…${whole.slice(-11)}` : whole });
 }
 
 /** A volume at the bottom of the map, as a plate: the Plates view's, sized by the map. */
@@ -860,7 +884,7 @@ function deepPlate(wing, params, volume) {
   plateFigure(readerDoc(wing, params, o.doc), { w: 180, h: 110 }),
   h('span', { class: 'bab-plate-cap' },
     h('i', { class: 'bab-swatch', data: { cls: said.cls, kind: wing.kind } }),
-    h('span', { class: 'bab-plate-num', text: showNumber(o.volume).text }),
+    plateNumber(o.volume, 'bab-plate-num'),
     h('span', { class: 'bab-plate-says', text: said.text })));
 }
 
@@ -875,9 +899,16 @@ function paintDeepReading(pane, wing, params, info) {
   // A browser prints append(null) as the text "null": absent parts are dropped.
   const put = (...nodes) => pane.append(...nodes.filter(Boolean));
   if (!info) {
+    const endless = !roomShape(wing, params).finite;
     put(
       h('div', { class: 'lib-fig bab-reading-empty' }, h('span', { text: 'Point at the map' })),
-      h('p', { class: 'bab-reading-hint', text: 'A block is coloured by machines drawn from it; a click zooms into it. At the bottom each cell is one volume, and a click opens it.' }));
+      h('p', { class: 'bab-reading-hint', text: endless
+        ? 'Each size of machine is a cell, coloured by machines drawn from it; a click goes into it. Inside, a block zooms in, and at the bottom each cell is one volume, which a click opens.'
+        : 'A block is coloured by machines drawn from it; a click zooms into it. At the bottom each cell is one volume, and a click opens it.' }));
+    return;
+  }
+  if (info.empty) {
+    put(h('div', { class: 'lib-fig bab-reading-empty' }, h('span', { text: `No machine is size ${info.shelfSize}` })));
     return;
   }
   let v = null;
@@ -896,11 +927,11 @@ function paintDeepReading(pane, wing, params, info) {
     : null;
   if (info.exact) {
     let wingNo = null;
-    try { const n = wingNumberOf(wing, params, v.volume); if (n.toString().length <= 30) wingNo = `wing № ${groupDigits(n)}`; } catch { /* past the search */ }
+    try { const n = wingNumberBelow(wing, params, v.volume, SHOWN_WING_NUMBER); if (n !== null) wingNo = `wing № ${groupDigits(n)}`; } catch { /* past the search */ }
     put(
       plateFigure(readerDoc(wing, params, v.doc), { w: 300, h: 160 }),
       h('div', { class: `bab-reading-num${showNumber(v.volume).text.length > 14 ? ' is-long' : ''}` }, h('span', { text: `№ ${showNumber(v.volume).text}` })),
-      h('span', { class: 'bab-reading-addr', text: `${v.address}${wingNo ? ` · ${wingNo}` : ''}` }),
+      h('span', { class: 'bab-reading-addr', title: v.address, text: `${clip(v.address, 22, 8)}${wingNo ? ` · ${wingNo}` : ''}` }),
       cls,
       said ? h('span', { class: 'bab-reading-says', text: `accepts ${said}` }) : null,
       button('Open the volume →', () => go('babel-volume', v.address), 'lib-textbtn bab-walk is-strong'));
@@ -915,14 +946,15 @@ function paintDeepReading(pane, wing, params, info) {
     }),
     cls, strip,
     said ? h('span', { class: 'bab-reading-says', text: `the one drawn accepts ${said}` }) : null,
-    h('span', { class: 'bab-reading-note', text: `level ${info.level} of ${info.levels} · a click zooms in` }));
+    h('span', {
+      class: 'bab-reading-note',
+      text: info.strip ? `every volume of size ${info.shelfSize} · a click goes into it`
+        : `${info.inSize !== null && info.inSize !== undefined ? `size ${info.inSize} · ` : ''}level ${info.level} of ${info.levels} · a click zooms in`
+    }));
 }
 
 /** The range a room's map shows: the whole of a finite room, or the first few sizes of an endless one. */
 function mapRange(wing, params) {
-  const id = roomId(wing, params);
-  const stack = B.zoom.get(id) || [];
-  if (stack.length) return { ...stack[stack.length - 1], depth: stack.length };
   const shape = roomShape(wing, params);
   if (shape.finite) return { lo: 0n, hi: shape.total, depth: 0 };
   let hi = 0n, s = 0;
@@ -1119,93 +1151,6 @@ function paintCells(canvas, c, palette, { cellW, cellH, gap = true, lit = null, 
   }
 }
 
-/** The map, and beside it a reading pane that follows the pointer, so nothing covers the map. */
-function roomMap(c) {
-  const { wing, params, id, block, range } = c;
-  const wrap = h('section', { class: 'bab-map-sec' });
-  const stack = B.zoom.get(id) || [];
-  if (stack.length || block > 1n) {
-    wrap.append(h('div', { class: 'bab-map-bar' },
-      stack.length ? button('← Zoom out', () => { stack.pop(); B.zoom.set(id, stack); go('babel-room', id, { push: false }); }, 'lib-textbtn') : null,
-      h('span', { class: 'bab-map-scale', text: block > 1n ? `1 cell = ${groupDigits(block)} volumes · click to zoom` : `volumes ${groupDigits(range.lo)} to ${groupDigits(range.hi - 1n)}` })));
-  }
-  const canvas = h('canvas', { class: 'bab-map', role: 'img', 'aria-label': `A map of ${id}, one cell per ${block === 1n ? 'volume' : 'block of volumes'}` });
-  const frame = h('div', { class: 'bab-map-frame lib-fig' }, canvas);
-  const pane = h('aside', { class: 'bab-reading', 'aria-live': 'polite' });
-  wrap.append(h('div', { class: 'bab-map-row' }, frame, pane));
-  paintReadingIdle(pane, c);
-
-  const lit = B.lit.get(id) || null;
-  let palette = null, cellW = 6, cellH = 4;
-  const draw = () => {
-    const width = Math.max(240, Math.min((frame.clientWidth || 640) - 24, 900));
-    cellW = Math.max(3, Math.min(12, Math.floor(width / c.cols)));
-    cellH = Math.max(3, Math.round(cellW * (c.cols > 48 ? 0.62 : 0.8)));
-    palette = palette || mapPalette(frame, wing);
-    paintCells(canvas, c, palette, { cellW, cellH, lit });
-  };
-  const cellAt = ev => {
-    const rect = canvas.getBoundingClientRect?.();
-    if (!rect) return -1;
-    const x = Math.floor((ev.clientX - rect.left) / cellW), y = Math.floor((ev.clientY - rect.top) / cellH);
-    const i = y * c.cols + x;
-    return x >= 0 && x < c.cols && i >= 0 && i < c.cells ? i : -1;
-  };
-  let shown = -1, queued = -1, raf = 0;
-  const later = globalThis.requestAnimationFrame || (fn => setTimeout(fn, 16));
-  canvas.addEventListener('mousemove', ev => {
-    queued = cellAt(ev);
-    if (raf) return;
-    raf = later(() => {
-      raf = 0;
-      if (queued < 0 || queued === shown) return;
-      shown = queued;
-      paintReading(pane, c, shown);
-    });
-  });
-  canvas.addEventListener('click', ev => {
-    const i = cellAt(ev);
-    if (i < 0) return;
-    if (block > 1n) {
-      const lo = range.lo + BigInt(i) * block;
-      const hi = lo + block > range.hi ? range.hi : lo + block;
-      B.zoom.set(id, [...stack, { lo, hi }]);
-      go('babel-room', id, { push: false });
-    } else go('babel-volume', volumeAddress(wing, params, c.volumes[i]));
-  });
-  c.watchers.push(draw);
-  setTimeout(draw, 0);
-  return wrap;
-}
-
-function paintReadingIdle(pane, c) {
-  pane.innerHTML = '';
-  pane.append(
-    h('div', { class: 'lib-fig bab-reading-empty' }, h('span', { text: 'Point at the map' })),
-    h('p', { class: 'bab-reading-hint', text: c.block > 1n ? 'Each cell stands for a block of volumes; a click zooms in.' : 'Each cell is one volume; a click opens it.' }));
-}
-
-/** The reading pane: the volume under the pointer, as a plate with its number and what it says. */
-function paintReading(pane, c, i) {
-  const { wing, params, block } = c;
-  const volume = c.volumes[i];
-  let v = null;
-  try { v = openVolume({ wing, params, volume }); } catch { /* past the room */ }
-  if (!v) return;
-  const lab = c.classes.find(k => k.key === c.found[i]);
-  const said = wing.kind === 'fa' ? sayVolume(wing, params, v.body).text : null;
-  let wingNo = null;
-  try { const n = wingNumberOf(wing, params, volume); if (n.toString().length <= 30) wingNo = `wing № ${groupDigits(n)}`; } catch { /* past the search */ }
-  pane.innerHTML = '';
-  pane.append(
-    plateFigure(v.doc, { w: 300, h: 160 }),
-    h('div', { class: 'bab-reading-num' }, h('span', { text: `№ ${showNumber(volume).text}` })),
-    h('span', { class: 'bab-reading-addr', text: `${v.address}${wingNo ? ` · ${wingNo}` : ''}` }),
-    lab ? h('span', { class: 'bab-reading-cls' }, h('i', { class: 'bab-swatch', data: { cls: lab.key, kind: wing.kind } }), lab.label) : h('span', { class: 'bab-reading-cls', text: 'reading…' }),
-    said ? h('span', { class: 'bab-reading-says', text: `accepts ${said}` }) : null,
-    block > 1n ? h('span', { class: 'bab-reading-note', text: `one of ${groupDigits(block)} in this cell · click to zoom` }) : button('Open the volume →', () => go('babel-volume', v.address), 'lib-textbtn bab-walk is-strong'));
-}
-
 /** Plates, a page at a time — and beside them the map as a minimap, framing the page you are on. */
 function roomPlates(wing, params, c) {
   const id = roomId(wing, params);
@@ -1258,7 +1203,7 @@ function roomPlates(wing, params, c) {
     plateFigure(o.doc, { w: 180, h: 110 }),
     h('span', { class: 'bab-plate-cap' },
       h('i', { class: 'bab-swatch', data: { cls: said.cls, kind: wing.kind } }),
-      h('span', { class: 'bab-plate-num', text: showNumber(o.volume).text }),
+      plateNumber(o.volume, 'bab-plate-num'),
       h('span', { class: 'bab-plate-says', text: said.text }))));
   }
   main.append(grid);
@@ -1316,11 +1261,15 @@ function pageVolume(address) {
   // number — what it does in a line, and the same three actions.
   const shown = showNumber(volume);
   let wingNo = null;
-  try { const n = wingNumberOf(wing, params, volume); if (n.toString().length <= 30) wingNo = `${wing.type} № ${groupDigits(n)}`; } catch { /* past the search */ }
+  try { const n = wingNumberBelow(wing, params, volume, SHOWN_WING_NUMBER); if (n !== null) wingNo = `${wing.type} № ${groupDigits(n)}`; } catch { /* past the search */ }
   const target = targetFromDoc(own);
   const said = sayLine(wing, params, body, own);
   const code = machineCodeOf(own);
   const standard = wing.kind === 'tm' ? standardOf(doc) : null;
+  // A Turing machine's lede is what it does from a blank tape, which arrives
+  // with the worker's verdict; every other volume's is known now.
+  const lede = said ? h('p', { class: 'lib-lede bab-lede', text: said })
+    : wing.kind === 'tm' ? h('p', { class: 'lib-lede bab-lede', text: 'Running it from a blank tape…' }) : null;
   page.append(h('div', { class: 'bab-vol-head' },
     h('div', { class: 'bab-vol-title' },
       h('p', { class: 'lib-kicker bab-vol-kicker' }, h('i', { class: 'lib-dot', 'aria-hidden': 'true' }), [fullName(wing), kindLine(wing, params, body)].filter(Boolean).join(' · ')),
@@ -1330,7 +1279,7 @@ function pageVolume(address) {
         wingNo ? h('span', { title: `Its number in the whole ${wing.type} wing`, text: wingNo }) : null,
         shown.long ? h('span', { title: 'The number is written out in full in the address and the copy' }, `${groupDigits(shown.digits)} digits · `, button('copy', () => exportCopyText(volume.toString(), 'Every digit copied'), 'lib-textbtn')) : null,
         shape.finite ? null : h('span', { title: 'An endless room orders its volumes by size', text: `size ${v.size}` })),
-      said ? h('p', { class: 'lib-lede bab-lede', text: said }) : null),
+      lede),
     volumeActions({ v, wingNo, own, addr, shown, code })));
 
   // The plate between its neighbours on the shelf, and its facts in the margin.
@@ -1346,6 +1295,8 @@ function pageVolume(address) {
   const onVerdict = behaviour ? verdict => {
     behaviour.innerHTML = '';
     behaviour.append(behaviourSection({ behaviour: verdict, standard }, { target }));
+    if (lede) lede.textContent = blankTapeLine(verdict);
+    stage.provedBlank?.(verdict);
   } : null;
   fillFacts(facts, { wing, params, body, doc, own, volume, addr, onVerdict });
   marginSections(facts, target, code);
@@ -1484,6 +1435,13 @@ function sayLine(wing, params, body, doc) {
   return `Accepts ${many}; ${shortest}.`;
 }
 
+/** A Turing machine's lede: what it does from a blank tape, from the worker's verdict. */
+function blankTapeLine(v) {
+  if (v?.verdict === 'halts') return v.steps ? `Halts from a blank tape after ${groupDigits(v.steps)} step${v.steps === 1 ? '' : 's'}.` : 'Halts at once: from a blank tape it stops before taking a single step.';
+  if (v?.verdict === 'never') return 'Never halts from a blank tape.';
+  return 'Whether it halts from a blank tape is not settled yet.';
+}
+
 function openOnCanvas(doc, addr) {
   const ok = applyDocument(JSON.stringify(doc), `${addr.replace(/[^a-z0-9-]+/gi, '_')}.automaton`, { tabName: addr });
   if (!ok) return false;
@@ -1553,10 +1511,28 @@ function tryIt(target, stage) {
     'aria-label': 'Word to run'
   });
   const out = h('div', { class: 'lib-try-out', 'aria-live': 'polite' });
+  // A Turing machine's run on ε is its run from a blank tape, which the
+  // Behaviour section may have settled past Try it's budget. A chip reading
+  // "no verdict" beside "Never halts — proven" read as the page contradicting
+  // itself, so the proof answers for ε when the budget could not.
+  let blank = null;
+  const chipFor = (w, got) => {
+    if (w !== '' || got.verdict !== 'unk' || !blank) return verdictChip(w, got);
+    if (blank.verdict === 'never') return h('button', { type: 'button', class: 'lib-verdict is-rej', title: 'Proved never to halt from a blank tape, so it never accepts' }, 'ε → never halts');
+    if (blank.verdict === 'halts') return h('button', { type: 'button', class: 'lib-verdict is-unk', title: 'Past the budget Try it runs; the Behaviour section ran it to the end' }, `ε → halts after ${groupDigits(blank.steps ?? 0)} steps`);
+    return verdictChip(w, got);
+  };
+  let blankChip = null;
+  stage.provedBlank = v => {
+    blank = v;
+    if (blankChip) { const next = chipFor('', decideRaw(target, '')); next.addEventListener('click', () => { input.value = ''; run(); }); blankChip.replaceWith(next); blankChip = next; }
+    if (out.firstChild && out.dataset.word === '') { out.innerHTML = ''; out.append(chipFor('', decideRaw(target, ''))); }
+  };
   const run = () => {
     const got = decideRaw(target, input.value);
     out.innerHTML = '';
-    out.append(verdictChip(input.value, got));
+    out.dataset.word = input.value;
+    out.append(chipFor(input.value, got));
     if (got.verdict !== 'err' && stage.live) {
       const trace = traceWord(target, input.value);
       if (!trace.error && trace.steps.length) playRun(stage, trace, got);
@@ -1571,8 +1547,9 @@ function tryIt(target, stage) {
     setTimeout(() => {
       const list = h('div', { class: 'lib-chips' });
       for (const w of words) {
-        const chip = verdictChip(w, decideRaw(target, w));
+        const chip = chipFor(w, decideRaw(target, w));
         chip.addEventListener('click', () => { input.value = w; run(); });
+        if (w === '') blankChip = chip;
         list.append(chip);
       }
       examples.append(h('span', { class: 'lib-try-label', text: 'The shortest words' }), list);
@@ -1623,11 +1600,18 @@ function fillFacts(box, { wing, params, body, doc, own = doc, volume, addr, onVe
       box.append(fact('Minimal', wing.type === 'DFA' && min.n === params[0] ? '✓ already' : `${min.n} state${min.n === 1 ? '' : 's'}`,
         { title: wing.type === 'DFA' && min.n === params[0] ? 'No smaller DFA says this' : 'The size of its minimal DFA' }));
       const rows = languageRows(asSketchDfa(min, Array.from({ length: params[1] }, (_, i) => own.sigma?.[i] ?? letterName(i))));
-      if (rows) box.append(h('div', { class: 'bab-lang', title: 'Every word up to a length, one row per length, inked where accepted' }, svgFigure(drawLanguage(rows, { w: 260, h: 96 }), 'bab-lang-fig')));
+      // The strip says what it is under it, not only in its tooltip: bare, it
+      // read as a bar chart with no axis.
+      if (rows) box.append(h('div', { class: 'bab-lang', title: 'Every word up to a length, one row per length, inked where accepted' }, svgFigure(drawLanguage(rows, { w: 260, h: 96 }), 'bab-lang-fig'),
+        h('span', { class: 'bab-lang-cap', text: `every word to length ${rows.length - 1}, a row per length from ε down · inked where accepted` })));
     }
   } else if (wing.omega === 'buchi') {
     // The DWA and NWA wings were these wings under another name: a weak
     // automaton decides as Büchi does, so the page says whether this one is weak.
+    // What it accepts comes first, as a finite automaton's class does; the
+    // weak/not-weak line was the only fact an ω page had.
+    const nonEmpty = classifyBody(wing, params, body) === 'o';
+    box.append(fact('Language', nonEmpty ? 'non-empty' : 'empty', { title: nonEmpty ? 'Some ω-word has an accepting run: a lasso through F' : 'No ω-word has an accepting run: no reachable state of F lies on a cycle' }));
     const clash = weakViolation(doc);
     const names = new Map(doc.states.map(s => [s.id, s.name]));
     box.append(fact('Weak', clash ? `no — {${clash.map(q => names.get(q) || q).join(', ')}} straddles F` : '✓ yes',
@@ -1662,7 +1646,7 @@ function fillFacts(box, { wing, params, body, doc, own = doc, volume, addr, onVe
   box.append(fact('Twins', twinVal, { title: 'Volumes of this room that are this machine with its states renamed; the canonical copy numbers them breadth-first' }));
   setTimeout(() => {
     let c;
-    try { c = canonicalOf(wing, params, body, { budget: 3000 }); } catch { twinVal.textContent = '—'; return; }
+    try { c = canonicalOf(wing, params, body, { budget: 3000, ms: 250 }); } catch { twinVal.textContent = '—'; return; }
     twinVal.innerHTML = '';
     if (!c.exact) { twinVal.append('not settled within the budget'); return; }
     twinVal.append(c.twins === 1n ? 'none' : shortCount(c.twins));
@@ -1707,9 +1691,11 @@ function tmVerdict(slot, wing, params, volume, addr, budget, onVerdict = null) {
   const key = `${addr}|${budget}`;
   const show = v => {
     slot.innerHTML = '';
-    if (!v) { slot.append(fact('Blank tape', '—')); return; }
+    if (!v) { slot.append(fact('Blank tape', '—')); onVerdict?.(null); return; }
     onVerdict?.(v);
-    if (v.verdict === 'halts') {
+    if (v.verdict === 'halts' && !v.steps) {
+      slot.append(fact('Halts', 'at once', { title: 'From a blank tape it stops before taking a single step' }));
+    } else if (v.verdict === 'halts') {
       slot.append(fact('Halts', `${groupDigits(v.steps ?? 0)} step${v.steps === 1 ? '' : 's'}${v.ones !== undefined ? ` · ${groupDigits(v.ones)} cells` : ''}`, { cls: 'is-good', title: 'From a blank tape, proved by running it; cells are the non-blank cells it leaves' }));
     } else if (v.verdict === 'never') {
       slot.append(fact('Never halts', METHOD_WORDS[v.method] || v.method || 'proved', { cls: 'is-warn', title: 'Proved from a blank tape' }));
@@ -1790,8 +1776,12 @@ function spelledSection(wing, params, body, volume, stage) {
   const sec = h('section', { class: 'bab-spelled' });
   const tiles = finiteTiles(wing, params, body);
   if (tiles) {
-    const terms = tiles.map(t => t.digit * t.place);
-    const sum = `${[tiles.offset, ...terms].filter((x, i) => i || x).map(x => groupDigits(x)).join(' + ')} = ${groupDigits(volume)}`;
+    // The sum is written out only where it can be read: a room's every term
+    // as long as its number, for a sum that would be cut to a line anyway, was
+    // most of a big room's page.
+    const sum = tiles.length <= 12
+      ? `${[tiles.offset, ...tiles.map(t => t.digit * t.place)].filter((x, i) => i || x).map(x => groupDigits(x)).join(' + ')} = ${groupDigits(volume)}`
+      : null;
     sec.append(h('div', { class: 'lib-sechead', title: 'Each tile is one digit of the number in its place value, and the part of the machine that digit sets. ↑ and ↓ move to the volume that differs in exactly that part.' },
       h('h3', { class: 'lib-sechead-title', text: `${shown}, spelled` }),
       h('span', { class: 'bab-spelled-key', text: 'each term sets one part' })));
@@ -1818,7 +1808,7 @@ function spelledSection(wing, params, body, volume, stage) {
     });
     if (tiles.length > MAX) row.append(h('div', { class: 'bab-tile is-more', text: `+${groupDigits(tiles.length - MAX)}` }));
     sec.append(row);
-    sec.append(sum.length <= 96 ? h('span', { class: 'bab-sum', text: sum }) : h('span', { class: 'bab-sum', title: sum, text: `${groupDigits(tiles.length)} terms add up to ${shown}` }));
+    sec.append(sum && sum.length <= 96 ? h('span', { class: 'bab-sum', text: sum }) : h('span', { class: 'bab-sum', title: sum && sum.length <= 4000 ? sum : null, text: `${groupDigits(tiles.length)} terms add up to ${shown}` }));
     return sec;
   }
   const sp = endlessSpelling(wing, params, body);
@@ -1866,7 +1856,7 @@ function neighbourSection(wing, params, body, volume) {
       const t = finiteTiles(wing, params, o.body)?.[nb.tile];
       row.append(h('button', { type: 'button', class: 'bab-near-chip', title: `${tiles[nb.tile].key}: ${t?.value || '—'} — ${said}`, on: { click: () => go('babel-volume', volumeAddress(wing, params, nb.volume)) } },
         plateFigure(od, { w: 160, h: 90 }),
-        h('span', { class: 'bab-near-cap' }, h('span', { class: 'bab-near-num', text: showNumber(nb.volume).text }), h('span', { class: 'bab-near-change', text: `${tiles[nb.tile].key} → ${t?.value || '—'}` })),
+        h('span', { class: 'bab-near-cap' }, plateNumber(nb.volume, 'bab-near-num'), h('span', { class: 'bab-near-change', text: `${tiles[nb.tile].key} → ${t?.value || '—'}` })),
         h('span', { class: 'bab-near-says', text: said })));
     } catch { /* past the room */ }
   }
@@ -1906,7 +1896,7 @@ export function babelOffer(query, { canvas = false, also = false, offline = fals
   }
   if (v) {
     let wingNo = null;
-    try { const n = wingNumberOf(v.wing, v.params, v.volume); if (n.toString().length <= 30) wingNo = `${v.wing.type} № ${groupDigits(n)}`; } catch { /* past the search */ }
+    try { const n = wingNumberBelow(v.wing, v.params, v.volume, SHOWN_WING_NUMBER); if (n !== null) wingNo = `${v.wing.type} № ${groupDigits(n)}`; } catch { /* past the search */ }
     const doc = foundDoc(v, found);
     const said = found.regex ? `accepts ${found.regex}` : sayVolume(v.wing, v.params, v.body, doc.sigma).text;
     const open = () => followFound(found);

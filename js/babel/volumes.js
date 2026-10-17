@@ -14,8 +14,8 @@
 // DOM-free and App-free.
 
 import { formatAddress } from './address.js';
-import { valueAt, volumeOf, volumesBefore } from './shape.js';
-import { documentOf, readDocument, roomId, roomProblem, roomShape, wingByKey } from './wings.js';
+import { sizeOfVolume, valueAt, volumeOf, volumesBefore } from './shape.js';
+import { documentOf, readDocument, roomId, roomProblem, roomShape, wingByKey, wingIsFinite } from './wings.js';
 
 export { roomId, roomShape };
 
@@ -68,9 +68,14 @@ export function rankInSize(wing, params, body) {
 }
 
 // The machines of total size T, room by room: rooms of weight ≤ T, the room
-// contributing its volumes of size T − weight.
+// contributing its volumes of size T − weight. In a wing of finite rooms every
+// machine is size 0 in its room, so only the rooms of weight T contribute —
+// asking every lighter room for its count at a size it has none of built
+// thousands of shapes, and a 120-state room's page took fifteen seconds.
+const finiteWings = new Map();
 function* stretch(wing, T) {
-  for (let w = 0; w <= T; w++) {
+  if (!finiteWings.has(wing.key)) finiteWings.set(wing.key, wingIsFinite(wing));
+  for (let w = finiteWings.get(wing.key) ? T : 0; w <= T; w++) {
     for (const params of roomsOfWeight(wing, w)) {
       const c = roomShape(wing, params).count(T - w);
       if (c) yield { params, count: c, size: T - w };
@@ -85,19 +90,74 @@ export function wingCountUpTo(wing, T) {
   return n;
 }
 
+// Where a room's size starts on its wing's shelf, by room and size: the sum of
+// every lighter stretch, which in a big room is hundreds of rooms' counts —
+// once per room, not once per page.
+const shelfStarts = new Map();
+
 /** A volume → its wing number. */
 export function wingNumberOf(wing, params, volume) {
   const shape = roomShape(wing, params);
-  const { value, size } = valueAt(shape, volume);
-  const { r } = shape.rank(value);
+  volume = BigInt(volume);
+  // Its size and its rank there, without building the machine: a finite
+  // room's volume is its own rank; an endless room's counts from its size.
+  let size = 0, r = volume;
+  if (shape.finite) {
+    if (volume < 0n || volume >= shape.total) throw new RangeError(`volume ${volume} is past the end of this room`);
+  } else {
+    size = volume < 0n ? -1 : sizeOfVolume(shape, volume);
+    if (size < 0) throw new RangeError(`volume ${volume} is past the sizes the engine will search`);
+    r = volume - volumesBefore(shape, size);
+  }
+  const key = `${roomId(wing, params)}|${size}`;
+  let start = shelfStarts.get(key);
+  if (start === undefined) {
+    const T = roomWeight(wing, params) + size;
+    let n = 0n;
+    for (let t = 0; t < T; t++) for (const part of stretch(wing, t)) n += part.count;
+    start = null;
+    for (const part of stretch(wing, T)) {
+      if (part.params.every((p, i) => p === params[i])) { start = n; break; }
+      n += part.count;
+    }
+    if (start === null) throw new RangeError('this room is not on its own wing’s shelf');
+    if (shelfStarts.size > 256) shelfStarts.clear();
+    shelfStarts.set(key, start);
+  }
+  return start + r;
+}
+
+/**
+ * A volume's wing number if it is below `cap`, else null — for a page that
+ * shows one only while it is short. The lighter rooms are summed from the
+ * lightest up and the sum stops at the cap, so a big room is answered in the
+ * first few weights rather than by building every room as heavy as itself
+ * (three hundred shapes, eleven seconds, for a 150-state DFA's page).
+ */
+export function wingNumberBelow(wing, params, volume, cap) {
+  const shape = roomShape(wing, params);
+  volume = BigInt(volume);
+  cap = BigInt(cap);
+  if (volume >= cap) return null;
+  let size = 0;
+  if (!shape.finite) {
+    size = volume < 0n ? -1 : sizeOfVolume(shape, volume);
+    if (size < 0) return null;
+  }
+  const key = `${roomId(wing, params)}|${size}`;
+  const known = shelfStarts.get(key);
+  const r = shape.finite ? volume : volume - volumesBefore(shape, size);
+  if (known !== undefined) return known + r < cap ? known + r : null;
   const T = roomWeight(wing, params) + size;
   let n = 0n;
-  for (let t = 0; t < T; t++) for (const part of stretch(wing, t)) n += part.count;
-  for (const part of stretch(wing, T)) {
-    if (part.params.every((p, i) => p === params[i])) return n + r;
-    n += part.count;
+  for (let t = 0; t <= T; t++) {
+    for (const part of stretch(wing, t)) {
+      if (t === T && part.params.every((p, i) => p === params[i])) return n + r < cap ? n + r : null;
+      n += part.count;
+      if (n >= cap) return null;
+    }
   }
-  throw new RangeError('this room is not on its own wing’s shelf');
+  return null;
 }
 
 /** A wing number → { params, volume }. */
@@ -189,8 +249,11 @@ export function seededBelow(seed) {
     n = BigInt(n);
     if (n <= 1n) return 0n;
     const words = Math.ceil(n.toString(2).length / 32) + 1;
-    let x = 0n;
-    for (let i = 0; i < words; i++) x = (x << 32n) | BigInt(next32());
-    return x % n;
+    // The words written side by side in hex are the number the shift-and-or
+    // loop built, in one step instead of a shift of the whole number per word
+    // (quadratic, and seconds a sample in a deep room's blocks).
+    let hex = '';
+    for (let i = 0; i < words; i++) hex += next32().toString(16).padStart(8, '0');
+    return BigInt(`0x${hex}`) % n;
   };
 }

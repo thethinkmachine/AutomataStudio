@@ -6,10 +6,14 @@
 //
 //   { type: 'classify', key, params, volumes: [string] }  → { classes: [key] }
 //   { type: 'behaviour', key, params, volume, budget }     → { verdict }
-//   { type: 'tile', key, params, level, tx, ty, samples }  → { cells, spp }
+//   { type: 'tile', key, params, size?, level, tx, ty, samples } → { cells, spp, lo, hi }
+//   { type: 'strip', key, params, from, count, samples }         → { cells, spp }
 //
 // A tile is the deep map's (deep-map.js): one block's children, read in
-// number order, `samples` machines a cell; `cells` holds class indices.
+// number order, `samples` machines a cell; `cells` holds class indices, and
+// lo/hi (hex) the block's run of volumes. In an endless room `size` names the
+// size the tile is in, and its run counts from that size's first volume. A
+// strip is the endless room's shelf: `count` sizes from `from`, one cell each.
 //
 // Volumes travel as strings: a BigInt survives a structured clone, but a
 // string survives every hop, the test stub included. Imports the engine and
@@ -18,7 +22,7 @@
 import { wingByKey } from './wings.js';
 import { classifyVolume, tmBehaviour } from './census.js';
 import { volumeAt } from './volumes.js';
-import { deepLayout, mapClassifier, readTile } from './deep-map.js';
+import { deepLayout, mapClassifier, readStrip, readTile, sizeLayout } from './deep-map.js';
 
 // The fields of a halting verdict worth sending: primitives only.
 const VERDICT_FIELDS = ['verdict', 'method', 'steps', 'ones', 'cells', 'period', 'from', 'shift', 'direction', 'longest', 'how', 'size', 'depth'];
@@ -53,10 +57,18 @@ export function handleBabelMessage(msg) {
       return { id: msg.id, type: 'classes', classes };
     }
     if (msg.type === 'tile') {
-      const layout = deepLayout(wing, msg.params);
+      const inSize = msg.size !== undefined && msg.size !== null;
+      const layout = inSize ? sizeLayout(wing, msg.params, msg.size) : deepLayout(wing, msg.params);
       if (!layout || !(msg.level >= 0 && msg.level < layout.D)) return { id: msg.id, type: 'failed', error: 'no such tile' };
-      const t = readTile(layout, msg.level, BigInt(msg.tx), BigInt(msg.ty), classifierFor(wing, msg.params), msg.samples);
-      return { id: msg.id, type: 'tile', cells: t.cells, spp: t.spp };
+      const room = classifierFor(wing, msg.params);
+      const classify = inSize ? v => room(layout.base + v) : room;
+      const t = readTile(layout, msg.level, BigInt(msg.tx), BigInt(msg.ty), classify, msg.samples);
+      const hex = v => (v === null ? null : v.toString(16));
+      return { id: msg.id, type: 'tile', cells: t.cells, spp: t.spp, lo: hex(t.lo), hi: hex(t.hi) };
+    }
+    if (msg.type === 'strip') {
+      const t = readStrip(wing, msg.params, msg.from, msg.count, classifierFor(wing, msg.params), msg.samples);
+      return { id: msg.id, type: 'strip', cells: t.cells, spp: t.spp };
     }
     if (msg.type === 'behaviour') {
       const { body } = volumeAt(wing, msg.params, BigInt(msg.volume));
