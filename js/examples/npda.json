@@ -1,0 +1,46 @@
+{
+  "machine": "NPDA",
+  "sigma": ["a", "b"],
+  "stackAlpha": ["a", "b", "Z"],
+  "states": [
+    { "id": "s1", "x": 180, "y": 260, "name": "first half" },
+    { "id": "s2", "x": 470, "y": 260, "name": "mirror" },
+    { "id": "s3", "x": 740, "y": 260, "name": "acc" }
+  ],
+  "startId": "s1",
+  "accepts": ["s3"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "a", "pop": "ε", "push": "a" },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "b", "pop": "ε", "push": "b" },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "ε", "pop": "ε", "push": "ε" },
+    { "id": "t4", "from": "s2", "to": "s2", "symbol": "a", "pop": "a", "push": "ε" },
+    { "id": "t5", "from": "s2", "to": "s2", "symbol": "b", "pop": "b", "push": "ε" },
+    { "id": "t6", "from": "s2", "to": "s3", "symbol": "ε", "pop": "Z", "push": "Z" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 80, "color": "blue",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Even-length palindromes (w · wʳ): push the first half, GUESS the invisible middle with the ε jump, then check the rest is the mirror image. No deterministic machine can find the middle — that guess is pure nondeterminism."
+    },
+    {
+      "id": "n2", "x": 150, "y": 400, "color": "green",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "The playback shows only the branch where the guess was right. Run abba, then abab — for abab every possible middle fails."
+    }
+  ],
+  "config": {
+    "pdaParadigm": "explicit"
+  },
+  "meta": {
+    "title": "Palindromes: guess the middle",
+    "blurb": "Accepts even-length palindromes over {a,b}. The machine pushes symbols, nondeterministically guesses where the middle is, then pops and matches the mirror half.",
+    "inputs": [
+      { "w": "abba", "expect": "accept" },
+      { "w": "baab", "expect": "accept" },
+      { "w": "abaaba", "expect": "accept" },
+      { "w": "abab", "expect": "reject" },
+      { "w": "aba", "expect": "reject", "label": "odd length" }
+    ]
+  }
+}

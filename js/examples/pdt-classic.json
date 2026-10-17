@@ -1,0 +1,46 @@
+{
+  "machine": "PDT",
+  "sigma": ["a", "b"],
+  "stackAlpha": ["Z", "X"],
+  "outputAlpha": ["a", "b"],
+  "states": [
+    { "id": "s1", "x": 200, "y": 280, "name": "reading a" },
+    { "id": "s2", "x": 520, "y": 280, "name": "reading b" },
+    { "id": "s3", "x": 820, "y": 280, "name": "balanced" }
+  ],
+  "startId": "s1",
+  "accepts": ["s3"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "a", "pop": "ε", "push": "X", "output": "b" },
+    { "id": "t2", "from": "s1", "to": "s2", "symbol": "b", "pop": "X", "push": "ε", "output": "a" },
+    { "id": "t3", "from": "s2", "to": "s2", "symbol": "b", "pop": "X", "push": "ε", "output": "a" },
+    { "id": "t4", "from": "s2", "to": "s3", "symbol": "ε", "pop": "Z", "push": "Z", "output": "" }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 70, "color": "purple",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "aⁿbⁿ ↦ bⁿaⁿ. The stack does the counting that makes aⁿbⁿ context-free: one X pushed per a, one popped per b, and the final ε-move only succeeds when Z is back on top — i.e. when the counts matched. The output swaps the letters as it goes."
+    },
+    {
+      "id": "n2", "x": 150, "y": 430, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Two jobs at once: the stack decides membership in a context-free language while the output function computes a transduction over the accepting runs. Try aab (unbalanced) — the run cannot reach \"balanced\", so the pair is not in the relation and nothing is output."
+    }
+  ],
+  "config": {
+    "transducerAccepts": true,
+    "pdaParadigm": "explicit"
+  },
+  "meta": {
+    "title": "Classic: aⁿbⁿ ↦ bⁿaⁿ",
+    "blurb": "Accepts aⁿbⁿ with the stack while printing b for every a and a for every b — so the output is bⁿaⁿ. Recognition and transduction in one machine.",
+    "inputs": [
+      { "w": "ab", "expect": "accept", "out": "ba" },
+      { "w": "aabb", "expect": "accept", "out": "bbaa" },
+      { "w": "aaabbb", "expect": "accept", "out": "bbbaaa" },
+      { "w": "aab", "expect": "reject" },
+      { "w": "abb", "expect": "reject" }
+    ]
+  }
+}

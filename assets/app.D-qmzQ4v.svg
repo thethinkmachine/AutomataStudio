@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Tab icon. Merges state-diamond-tile-light/dark into one file: a favicon is
+       painted into browser chrome, which knows nothing about the in-app theme, so
+       it follows the OS colour scheme instead. The in-app mark is the #logo-mark
+       symbol in index.html and tracks the selected theme through CSS variables. -->
+  <style>
+    :root { --tile: #FFFFFF; --ink: #0A1018; }
+    @media (prefers-color-scheme: dark) {
+      :root { --tile: #0A1018; --ink: #FFFFFF; }
+    }
+  </style>
+  <rect width="128" height="128" rx="28" fill="var(--tile)" />
+  <g transform="translate(20 20) scale(0.88)" stroke-width="6" stroke-linecap="round">
+    <line x1="50" y1="16" x2="16" y2="50" stroke="var(--ink)" />
+    <line x1="50" y1="16" x2="84" y2="50" stroke="var(--ink)" />
+    <line x1="16" y1="50" x2="50" y2="84" stroke="var(--ink)" />
+    <line x1="84" y1="50" x2="50" y2="84" stroke="#4CC2F5" />
+    <circle cx="50" cy="16" r="11" fill="var(--ink)" />
+    <circle cx="16" cy="50" r="11" fill="var(--ink)" />
+    <circle cx="50" cy="84" r="11" fill="var(--ink)" />
+    <circle cx="84" cy="50" r="11" fill="#4CC2F5" />
+  </g>
+</svg>

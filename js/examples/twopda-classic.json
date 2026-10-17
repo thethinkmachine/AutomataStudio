@@ -1,0 +1,77 @@
+{
+  "machine": "2PDA",
+  "sigma": [
+    "a",
+    "b"
+  ],
+  "stackAlpha": [
+    "A",
+    "B",
+    "Z"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 120,
+      "y": 220,
+      "name": "q0"
+    },
+    {
+      "id": "s2",
+      "x": 320,
+      "y": 220,
+      "name": "q1"
+    },
+    {
+      "id": "s3",
+      "x": 520,
+      "y": 220,
+      "name": "q2"
+    },
+    {
+      "id": "s4",
+      "x": 700,
+      "y": 220,
+      "name": "acc"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s4"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "a",
+      "pop": "Z",
+      "push": "AZ",
+      "pop2": "Z",
+      "push2": "Z"
+    },
+    {
+      "id": "t2",
+      "from": "s2",
+      "to": "s3",
+      "symbol": "b",
+      "pop": "A",
+      "push": "ε",
+      "pop2": "Z",
+      "push2": "BZ"
+    },
+    {
+      "id": "t3",
+      "from": "s3",
+      "to": "s4",
+      "symbol": "ε",
+      "pop": "Z",
+      "push": "Z",
+      "pop2": "B",
+      "push2": "ε"
+    }
+  ],
+  "config": {
+    "pdaParadigm": "explicit"
+  }
+}

@@ -1,0 +1,51 @@
+{
+    "machine": "DFA",
+    "sigma": [
+        "0",
+        "1"
+    ],
+    "states": [
+        {
+            "id": "s1",
+            "x": 140,
+            "y": 200,
+            "name": "q_even"
+        },
+        {
+            "id": "s2",
+            "x": 360,
+            "y": 200,
+            "name": "q_odd"
+        }
+    ],
+    "startId": "s1",
+    "accepts": [
+        "s1"
+    ],
+    "transitions": [
+        {
+            "id": "t1",
+            "from": "s1",
+            "to": "s1",
+            "symbol": "0"
+        },
+        {
+            "id": "t2",
+            "from": "s1",
+            "to": "s2",
+            "symbol": "1"
+        },
+        {
+            "id": "t3",
+            "from": "s2",
+            "to": "s2",
+            "symbol": "0"
+        },
+        {
+            "id": "t4",
+            "from": "s2",
+            "to": "s1",
+            "symbol": "1"
+        }
+    ]
+}

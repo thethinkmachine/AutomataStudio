@@ -1,0 +1,45 @@
+{
+  "machine": "PFA",
+  "sigma": ["0", "1"],
+  "states": [
+    { "id": "s1", "x": 240, "y": 280, "name": "q0" },
+    { "id": "s2", "x": 640, "y": 280, "name": "q1" }
+  ],
+  "startId": "s1",
+  "accepts": ["s2"],
+  "transitions": [
+    { "id": "t1", "from": "s1", "to": "s1", "symbol": "0", "weight": 1 },
+    { "id": "t2", "from": "s1", "to": "s1", "symbol": "1", "weight": 0.5 },
+    { "id": "t3", "from": "s1", "to": "s2", "symbol": "1", "weight": 0.5 },
+    { "id": "t4", "from": "s2", "to": "s1", "symbol": "0", "weight": 0.5 },
+    { "id": "t5", "from": "s2", "to": "s2", "symbol": "0", "weight": 0.5 },
+    { "id": "t6", "from": "s2", "to": "s2", "symbol": "1", "weight": 1 }
+  ],
+  "notes": [
+    {
+      "id": "n1", "x": 150, "y": 70, "color": "purple",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "Rabin's cut-point automaton. After reading w the accepting mass is exactly the binary fraction 0.wₙ…w₂w₁ — the input read as bits after a binary point, last symbol most significant. So P(1) = 0.5, P(11) = 0.75, P(111) = 0.875."
+    },
+    {
+      "id": "n2", "x": 150, "y": 430, "color": "orange",
+      "anchorStates": [], "anchorTransitions": [],
+      "text": "This is the machine behind Rabin's theorem. With an isolated cut-point (one no P(w) crowds against) the language is regular. Move λ to an irrational value and the same two states recognise a NON-regular language — the reason PFAs are strictly more powerful than DFAs when the cut-point is not isolated. Try λ = 0.5 and watch P(1) land exactly on it: 0.5 > 0.5 is false, so \"1\" is rejected."
+    }
+  ],
+  "config": {
+    "pfaCutPoint": 0.5
+  },
+  "meta": {
+    "title": "Classic: Rabin's cut-point language",
+    "blurb": "The accepting mass after w is the binary fraction 0.wᴿ. With cut-point 0.5 the machine accepts exactly the words whose reversed binary value exceeds one half.",
+    "inputs": [
+      { "w": "0", "expect": "reject" },
+      { "w": "1", "expect": "reject" },
+      { "w": "11", "expect": "accept" },
+      { "w": "01", "expect": "reject" },
+      { "w": "10", "expect": "reject" },
+      { "w": "111", "expect": "accept" }
+    ]
+  }
+}

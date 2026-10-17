@@ -1,0 +1,59 @@
+{
+    "machine": "ε-NFA",
+    "sigma": [
+        "a",
+        "b"
+    ],
+    "states": [
+        {
+            "id": "s1",
+            "x": 100,
+            "y": 200,
+            "name": "start"
+        },
+        {
+            "id": "s2",
+            "x": 300,
+            "y": 120,
+            "name": "a_star"
+        },
+        {
+            "id": "s3",
+            "x": 300,
+            "y": 280,
+            "name": "b_star"
+        }
+    ],
+    "startId": "s1",
+    "accepts": [
+        "s1",
+        "s2",
+        "s3"
+    ],
+    "transitions": [
+        {
+            "id": "t1",
+            "from": "s1",
+            "to": "s2",
+            "symbol": "ε"
+        },
+        {
+            "id": "t2",
+            "from": "s1",
+            "to": "s3",
+            "symbol": "ε"
+        },
+        {
+            "id": "t3",
+            "from": "s2",
+            "to": "s2",
+            "symbol": "a"
+        },
+        {
+            "id": "t4",
+            "from": "s3",
+            "to": "s3",
+            "symbol": "b"
+        }
+    ]
+}
