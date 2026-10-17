@@ -62,13 +62,13 @@ const FAN_MAX = 1024;     // and never exceeds
 const NARROW = 256;       // a huge digit is narrowed this many ways a level
 
 /**
- * How many machines colour a block. Five for finite automata and ω-automata,
- * whose classifiers take microseconds; one for the rooms whose machines are
- * run (Turing machines, the one-counter automaton), where five would make
- * every screen five times slower to read.
+ * How many machines colour a block. Five where a volume is decided from its
+ * table — finite automata, ω-automata, pushdown automata; one for the rooms
+ * whose machines are run (Turing machines), where five would make every screen
+ * five times slower to read.
  */
 export function samplesFor(wing, layout = null) {
-  if (!(wing.kind === 'fa' || wing.kind === 'omega')) return 1;
+  if (wing.kind === 'tm') return 1;
   // Past about 33,000 bits a volume is a long decode, and five a block made
   // a tile take seconds: one a block, as in the rooms whose machines are run.
   return layout && layout.lvol[0] > 10000 ? 1 : 5;

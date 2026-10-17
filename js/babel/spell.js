@@ -40,12 +40,15 @@ function topParts(shape, body) {
 }
 
 /**
- * The convention a volume is read under, in words: the one-counter automaton's
- * bottom marker and final states (its wing holds no other). Empty for a wing
- * with no convention to state.
+ * The convention a volume is read under, in words: a store machine's bottom
+ * marker and final states, or its empty stack — the first choice of a DPDA's
+ * or NPDA's number; the one-counter automaton has only the first. Empty for a
+ * wing with no convention to state.
  */
-export function conventionsOf(wing) {
-  return wing.store ? ['a bottom marker Z, acceptance by final state'] : [];
+export function conventionsOf(wing, params, body) {
+  if (!wing.store) return [];
+  const [tag] = topParts(roomShape(wing, params), body).conventions;
+  return [!wing.explicitOnly && tag === 1 ? 'acceptance by empty stack' : 'a bottom marker Z, acceptance by final state'];
 }
 
 /**
