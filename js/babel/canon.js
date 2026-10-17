@@ -122,8 +122,11 @@ function refine(g, colour) {
  * The canonical copy of a volume and its twin count.
  * → { body, volume, twins, exact, method } — twins is null when the search
  * ran out of budget, and `exact` says whether the copy is certainly canonical.
+ * `ms` bounds the search in time as well as in nodes: in a room of 40-state
+ * machines a node can cost a document read, and 3,000 of them held a page's
+ * main thread for half a minute.
  */
-export function canonicalOf(wing, params, body, { budget = 5000 } = {}) {
+export function canonicalOf(wing, params, body, { budget = 5000, ms = Infinity } = {}) {
   const doc = documentOf(wing, params, body);
   const g = graphOf(doc);
   const n = g.n;
@@ -146,8 +149,9 @@ export function canonicalOf(wing, params, body, { budget = 5000 } = {}) {
   const initial = keys.map(k => uniq.indexOf(k));
 
   let best = null, ties = 0, nodes = 0, exhausted = true;
+  const until = ms === Infinity ? Infinity : performance.now() + ms;
   const search = colour => {
-    if (nodes++ > budget) { exhausted = false; return; }
+    if (nodes++ > budget || (until !== Infinity && performance.now() > until)) { exhausted = false; return; }
     const c = refine(g, colour);
     const classes = new Map();
     c.forEach((x, i) => { if (!classes.has(x)) classes.set(x, []); classes.get(x).push(i); });

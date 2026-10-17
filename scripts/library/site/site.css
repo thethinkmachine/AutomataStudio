@@ -220,6 +220,7 @@ code { font-family: var(--mono); font-size: .86em; }
 .rn-3 { fill: var(--text2); }
 .rn-4 { fill: var(--text3); }
 .rn-h { fill: none; stroke: var(--h, var(--accent)); stroke-width: 1; }
+.rn-hd { fill: var(--h, var(--accent)); }
 
 /* ── plates: a machine in a catalogue ── */
 .plates { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 32px 24px; }

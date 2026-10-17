@@ -29,12 +29,22 @@
 // very machines it came from. Cells at the bottom level are single volumes and
 // read exactly.
 
+// Every room has one: a finite room's layout is built from its digits, and an
+// endless room is a row of its sizes (sizeLayout), each size a finite run of
+// volumes laid out the same way. Nothing in a layout is held per level as a
+// BigInt — a block's size, a level's width — because a room 100,000 levels
+// deep would hold 100,000 numbers each as long as its volume numbers: that is
+// what ran dfa-300-300 out of memory and once kept rooms past 2,500 levels on
+// the census map. Each level is its grid and a symbolic size (which digit, how
+// many of its values), and the numbers are worked out when asked, from their
+// neighbours (sizeAt, widthAt).
+
 import { roomId, roomShape } from './wings.js';
 import { seededBelow } from './volumes.js';
 import { cellClassesOf, classifyBody } from './census.js';
 import { flatLanguageClass } from './facts.js';
-import { finiteTiles } from './spell.js';
-import { valueAt } from './shape.js';
+import { tileSpans } from './spell.js';
+import { prefixProducts, radixProduct, valueAt, volumesBefore } from './shape.js';
 
 /** The smallest cell the map draws, in CSS px: below it, the level above is drawn. */
 export const MAP_FLOOR = 6;
@@ -50,7 +60,6 @@ export const UNKNOWN = 254;
 const FAN_TARGET = 100;   // children a level aims for
 const FAN_MAX = 1024;     // and never exceeds
 const NARROW = 256;       // a huge digit is narrowed this many ways a level
-export const MAX_LEVELS = 2500;  // the deepest room the map flies through (about 0.25 s to lay out)
 
 /**
  * How many machines colour a block. Five for finite automata and ω-automata,
@@ -58,73 +67,132 @@ export const MAX_LEVELS = 2500;  // the deepest room the map flies through (abou
  * run (Turing machines, the one-counter automaton), where five would make
  * every screen five times slower to read.
  */
-export function samplesFor(wing) {
-  return wing.kind === 'fa' || wing.kind === 'omega' ? 5 : 1;
+export function samplesFor(wing, layout = null) {
+  if (!(wing.kind === 'fa' || wing.kind === 'omega')) return 1;
+  // Past about 33,000 bits a volume is a long decode, and five a block made
+  // a tile take seconds: one a block, as in the rooms whose machines are run.
+  return layout && layout.lvol[0] > 10000 ? 1 : 5;
 }
 
-/** log10 of a positive BigInt, to a float's precision. */
+/** log10 of a positive BigInt, to a float's precision — from its hex digits, so a long one costs nothing. */
 export function bigLog10(b) {
-  const s = BigInt(b).toString();
-  return Math.log10(Number(s.slice(0, 15))) + (s.length - Math.min(15, s.length));
+  b = BigInt(b);
+  if (b < 1n << 50n) return Math.log10(Number(b));
+  const hex = b.toString(16);
+  return Math.log10(parseInt(hex.slice(0, 12), 16)) + (hex.length - 12) * Math.log10(16);
 }
 
 // ── The layout ─────────────────────────────────────────────────────
 
 const layouts = new Map();
 
-/** A finite room's deep-map layout (cached per room), or null for an endless room. */
-export function deepLayout(wing, params) {
-  const id = roomId(wing, params);
-  let layout = layouts.get(id);
-  if (layout) return layout;
-  const shape = roomShape(wing, params);
-  if (!shape.finite) return null;
-  // Building a layout costs the square of its depth (a prefix product per
-  // digit, and every level's names against every digit): 0.15 s at 2,000
-  // levels, 3 s at 8,000, out of memory at dfa-300-300's 90,000. A room
-  // deeper than a reader could fly through takes the census map instead.
-  const radices = (shape.radices ? shape.radices() : [shape.total]).map(BigInt).filter(r => r > 1n);
-  const depth = radices.reduce((s, r) => s + (r < 1n << 53n ? Math.log10(Number(r)) : bigLog10(r)), 0) / Math.log10(FAN_TARGET);
-  if (depth > MAX_LEVELS) return null;
-  layout = buildLayout(wing, params, shape, id, radices);
-  if (!layout) return null;
+function remember(id, layout) {
   if (layouts.size > 64) layouts.clear();
   layouts.set(id, layout);
   return layout;
 }
 
-// `radices` leaves out digits with one value: they say nothing and would make empty levels.
-function buildLayout(wing, params, shape, id, radices) {
-  const total = shape.total;
-  const places = [1n];
-  for (const r of radices) places.push(places[places.length - 1] * r);
-  const placeIndex = new Map(places.map((p, k) => [p, k]));
+/** A finite room's deep-map layout (cached per room), or null for an endless room — whose sizes have theirs (sizeLayout). */
+export function deepLayout(wing, params) {
+  const id = roomId(wing, params);
+  const known = layouts.get(id);
+  if (known) return known;
+  const shape = roomShape(wing, params);
+  if (!shape.finite) return null;
+  // `radices` leaves out digits with one value: they say nothing and would make empty levels.
+  const radices = (shape.radices ? shape.radices() : [shape.total]).map(BigInt).filter(r => r > 1n);
+  // Only a wing that names its parts (q9 · j, F) has something to say about a
+  // level: without one, every part is called by its shape ("set").
+  const spans = () => {
+    if (!wing.tile) return null;
+    try { return tileSpans(wing, params, valueAt(shape, 0n).value); } catch { return null; }
+  };
+  return remember(id, buildLayout(id, shape.total, radices, spans));
+}
 
-  // Block sizes from the top: sizes[0] is the room, sizes[D] is one volume.
-  // Each level is laid out as it is chosen, because its grid depends on the
-  // shape of the cells it cuts: `asp` is their width over their height.
-  const sizes = [total], levels = [], aspect = [1];
-  let asp = 1;
-  const pushLevel = child => {
-    const S = sizes[sizes.length - 1];
-    const fan = Number((S + child - 1n) / child);
-    const { cols, rows } = gridFor(fan, placeIndex.get(S), placeIndex.get(child), radices, asp);
-    levels.push({ cols, rows, child, colsB: BigInt(cols), rowsB: BigInt(rows) });
-    asp *= rows / cols;
-    aspect.push(asp);
-    sizes.push(child);
+/**
+ * Size s of an endless room as a finite room of its own: its count(s) volumes,
+ * the first of them the room's volume `base`. A size has no parts to split by,
+ * so its volumes are laid out by the decimal digits of their rank in it: a
+ * level fixes two, a 10 × 10 grid every block fills, and the only empty cells
+ * are past its last volume. Narrowed as one huge digit, a few hundred ways a
+ * level, a run of 7 left a 3 × 3 with holes at the end of every block.
+ * Null for a size with no machines.
+ */
+export function sizeLayout(wing, params, s) {
+  const id = `${roomId(wing, params)}@${s}`;
+  const known = layouts.get(id);
+  if (known) return known;
+  const shape = roomShape(wing, params);
+  if (shape.finite) return null;
+  const total = shape.count(s);
+  if (!(total > 0n)) return null;
+  const radices = [];
+  let rest = total;
+  while (rest > 10n) { radices.push(10n); rest = (rest + 9n) / 10n; }
+  if (rest > 1n) radices.push(rest);
+  const layout = buildLayout(id, total, radices, () => null);
+  layout.size = s;
+  layout.base = volumesBefore(shape, s);
+  return remember(id, layout);
+}
+
+/** Products of a row of BigInts read like an array: `view[l]` is the product of the first l (prefixProducts). */
+function lazyProducts(row, whole = null) {
+  const at = prefixProducts(row, whole);
+  return { at, view: new Proxy([], { get: (t, p) => (p === 'length' ? row.length + 1 : typeof p === 'string' && /^\d+$/.test(p) ? at(Number(p)) : t[p]) }) };
+}
+
+/** An array read through a function, worked out once per index. */
+function lazyRow(n, fn) {
+  const cache = new Map();
+  const at = l => {
+    if (!cache.has(l)) cache.set(l, fn(l));
+    return cache.get(l);
+  };
+  return new Proxy([], { get: (t, p) => (p === 'length' ? n : typeof p === 'string' && /^\d+$/.test(p) ? at(Number(p)) : t[p]) });
+}
+
+/**
+ * The layout of a run of `total` volumes numbered by `radices` (low first).
+ * A block is held as places[i] · m — the product of the digits below i, times
+ * m values of digit i still open (m = 1 when the block is aligned to a digit):
+ * every comparison the walk makes reads digit indices and small numbers.
+ */
+function buildLayout(id, total, radices, spansOf) {
+  const R = radices.length;
+  // The radices' product: the room's total, or past it for a size whose
+  // top digit runs on past its last volume (those cells are past the room).
+  const places = lazyProducts(radices, radixProduct(radices));
+  const logPlace = new Float64Array(R + 1);
+  for (let k = 0; k < R; k++) logPlace[k + 1] = logPlace[k] + bigLog10(radices[k]);
+  // The digit index k with places[k] = places[i] · m, if there is one.
+  const placeIndexOf = (i, m) => {
+    let prod = 1n, k = i;
+    while (prod < m && k < R) { prod *= radices[k]; k++; }
+    return prod === m ? k : undefined;
   };
 
-  // The current block is places[i] · m — whole digits below i, and m values
-  // of digit i still open (m = 1 when the block is aligned to a digit).
-  let i = radices.length, m = 1n;
-  for (let guard = 0; sizes[sizes.length - 1] > 1n && guard < 100000; guard++) {
-    const cur = sizes[sizes.length - 1];
-    if (cur <= BigInt(FAN_MAX)) { pushLevel(1n); break; }
-    if (m > BigInt(FAN_MAX)) {
+  // Each level is laid out as it is chosen, because its grid depends on the
+  // shape of the cells it cuts: `asp` is their width over their height.
+  const levels = [], aspect = [1];
+  let asp = 1, i = R, m = 1n;
+  const FAN = BigInt(FAN_MAX);
+  const pushLevel = (ci, cm) => {
+    const fan = Number((radixProduct(radices, ci, i) * m + cm - 1n) / cm);
+    const { cols, rows } = gridFor(fan, placeIndexOf(i, m), placeIndexOf(ci, cm), radices, asp, true);
+    levels.push({ cols, rows, colsB: BigInt(cols), rowsB: BigInt(rows), ci, cm });
+    asp *= rows / cols;
+    aspect.push(asp);
+    i = ci; m = cm;
+  };
+
+  for (let guard = 0; guard < 1e8; guard++) {
+    if (i === 0 && m === 1n && levels.length) break;   // down to single volumes
+    if (logPlace[i] + bigLog10(m) < 3.5 && places.at(i) * m <= FAN) { pushLevel(0, 1n); break; }
+    if (m > FAN) {
       // Inside a digit too big for one level: narrow it to runs of its values.
-      m = (m + BigInt(NARROW) - 1n) / BigInt(NARROW);
-      pushLevel(places[i] * m);
+      pushLevel(i, (m + BigInt(NARROW) - 1n) / BigInt(NARROW));
       continue;
     }
     // Finish the open digit (if any) and take whole digits below while they
@@ -141,26 +209,38 @@ function buildLayout(wing, params, shape, id, radices) {
       const sc = score(j, F);
       if (!best || sc < best.score) best = { j, F, score: sc };
     }
-    if (best) { i = best.j; m = 1n; pushLevel(places[i]); continue; }
+    if (best) { pushLevel(best.j, 1n); continue; }
     // The next digit down is too big to take whole: open it.
     i -= 1;
     m = radices[i];
   }
-  // A layout that stops short of single volumes would call its last level's
-  // blocks volumes. The depth estimate keeps this from happening; if it ever
-  // does, there is no deep map rather than a wrong one.
-  if (sizes[sizes.length - 1] > 1n) return null;
 
-  const W = [1n], H = [1n];
-  levels.forEach((lv, l) => { W.push(W[l] * lv.colsB); H.push(H[l] * lv.rowsB); });
+  const D = levels.length;
+  const sizeAt = l => (l === 0 ? total : places.at(levels[l - 1].ci) * levels[l - 1].cm);
+  levels.forEach((lv, l) => Object.defineProperty(lv, 'child', { get: () => sizeAt(l + 1), enumerable: false }));
+  const colsRow = levels.map(lv => lv.colsB), rowsRow = levels.map(lv => lv.rowsB);
+  const W = lazyProducts(colsRow).view, H = lazyProducts(rowsRow).view;
+  const lW = new Float64Array(D + 1);
+  for (let l = 0; l < D; l++) lW[l + 1] = lW[l] + Math.log10(levels[l].cols);
+  const lvol = new Float64Array(D + 1);
+  for (let l = 0; l <= D; l++) {
+    const ci = l ? levels[l - 1].ci : R, cm = l ? levels[l - 1].cm : 1n;
+    const lg = logPlace[ci] + bigLog10(cm);
+    lvol[l] = lg < 14 ? Math.log10(Number(sizeAt(l))) : lg;
+  }
   const layout = {
-    id, total, sizes, levels, aspect, W, H,
-    D: levels.length,
-    lvol: sizes.map(bigLog10),
-    lW: W.map(bigLog10),   // log10 of each level's columns: the depth measure
-    picks: []
+    id, total, levels, aspect, W, H, D, lvol,
+    lW,                           // log10 of each level's columns: the depth measure
+    sizes: lazyRow(D + 1, sizeAt),
+    colsRow, rowsRow,             // each level's grid as BigInts, for the camera's long moves
+    blocks: new Map(),            // blockAt's recent answers
+    radices
   };
-  layout.picks = levelPicks(wing, params, shape, layout);
+  let spans;
+  layout.picks = lazyRow(D, l => {
+    if (spans === undefined) spans = spansOf();
+    return levelPick(layout, l, spans);
+  });
   return layout;
 }
 
@@ -178,7 +258,7 @@ const MAX_SKEW = 2.5;
  * read as rows and columns, and a level's children stay in number order.
  * Otherwise the grid that holds them nearest square; the last row may run short.
  */
-function gridFor(fan, hiIndex, loIndex, radices, asp = 1) {
+function gridFor(fan, hiIndex, loIndex, radices, asp = 1, exactly = false) {
   const skewOf = (cols, rows) => Math.abs(Math.log(asp * rows / cols));
   if (hiIndex !== undefined && loIndex !== undefined && hiIndex > loIndex) {
     let best = null;
@@ -191,6 +271,21 @@ function gridFor(fan, hiIndex, loIndex, radices, asp = 1) {
     }
     if (best && best.skew <= Math.log(MAX_SKEW)) return { cols: best.cols, rows: best.rows };
   }
+  // Not cut between digits (none fits square enough, or the children are a
+  // run of one digit): then a grid the children fill exactly, if one is square
+  // enough, since a short last row reads as missing volumes — 1,000 children
+  // in a 29 × 35. Never while the walk is choosing how many digits a level
+  // takes (`exactly` off): there it would favour levels that cannot be read
+  // as rows of one digit and columns of another.
+  let exact = null;
+  for (let r = 1; exactly && r * r <= fan; r++) {
+    if (fan % r) continue;
+    for (const [rows, cols] of [[r, fan / r], [fan / r, r]]) {
+      const skew = skewOf(cols, rows);
+      if (skew <= Math.log(MAX_SKEW) && (!exact || skew < exact.skew)) exact = { cols, rows, skew };
+    }
+  }
+  if (exact) return { cols: exact.cols, rows: exact.rows };
   let rows = Math.min(fan, Math.max(1, Math.round(Math.sqrt(fan / asp))));
   const cols = Math.ceil(fan / rows);
   rows = Math.ceil(fan / cols);
@@ -198,49 +293,106 @@ function gridFor(fan, hiIndex, loIndex, radices, asp = 1) {
 }
 
 /**
- * What each level decides, named the way the volume page spells a number
- * (q9 · j, F, …): the parts whose digits lie between the level's block size
- * and its children's. `across`/`down` are set when the level is exactly two
- * parts, read as columns and rows.
+ * What a level decides, named the way the volume page spells a number (q9 · j,
+ * F, …): the parts whose digits lie between the level's block size and its
+ * children's. `across`/`down` are set when the level is exactly two parts,
+ * read as columns and rows. Sizes are compared by digit index: places[k] is
+ * below places[i] · m exactly when k < i, or k = i with m > 1.
  */
-function levelPicks(wing, params, shape, layout) {
-  // Only a wing that names its parts (q9 · j, F) has something to say here:
-  // without one, every part is called by its shape ("set"), which tells the
-  // reader nothing.
-  let tiles = null;
-  if (wing.tile) try { tiles = finiteTiles(wing, params, valueAt(shape, 0n).value); } catch { /* unnamed */ }
-  return layout.levels.map((lv, l) => {
-    const hi = layout.sizes[l], lo = lv.child;
-    if (!tiles) return { names: [], whole: true };
-    const inside = tiles.filter(t => t.radix > 1n && t.place >= lo && t.place < hi);
-    const whole = inside.every(t => t.place * t.radix <= hi);
-    const open = inside.length ? [] : tiles.filter(t => t.place < lo && t.place * t.radix > lo);
-    const names = (inside.length ? inside : open).map(t => t.key).reverse();
-    let down = null, across = null;
-    if (inside.length === 2 && whole) {
-      const [low, high] = inside;
-      if (Number(high.radix) === lv.rows && Number(low.radix) === lv.cols) { down = high.key; across = low.key; }
-    }
-    return { names, whole: whole && inside.length > 0, down, across };
-  });
+function levelPick(layout, l, spans) {
+  if (!spans) return { names: [], whole: true };
+  const { levels, radices } = layout;
+  const lv = levels[l];
+  const R = radices.length;
+  const pi = l ? levels[l - 1].ci : R, pm = l ? levels[l - 1].cm : 1n;
+  const below = (k, i, m) => k < i || (k === i && m > 1n);                         // places[k] < places[i]·m
+  const above = (k, i, m) => k > i + 1 || (k === i + 1 && i < R && m < radices[i]); // places[k] > places[i]·m
+  const inside = spans.filter(t => !below(t.start, lv.ci, lv.cm) && below(t.start, pi, pm));
+  const whole = inside.every(t => !above(t.end, pi, pm));
+  const open = inside.length ? [] : spans.filter(t => below(t.start, lv.ci, lv.cm) && above(t.end, lv.ci, lv.cm));
+  const names = (inside.length ? inside : open).map(t => t.key).reverse();
+  let down = null, across = null;
+  if (inside.length === 2 && whole) {
+    const [low, high] = inside;
+    const radixOf = t => radixProduct(radices, t.start, t.end);
+    if (Number(radixOf(high)) === lv.rows && Number(radixOf(low)) === lv.cols) { down = high.key; across = low.key; }
+  }
+  return { names, whole: whole && inside.length > 0, down, across };
 }
 
-/** The block under level-l grid cell (X, Y): its run [lo, hi) of volumes, or null past the room. */
+/** A grid coordinate as a key: decimal while short, hex once long (a long decimal is slow to write). */
+export function coordKey(v) {
+  return v < 1n << 512n ? v.toString() : `x${v.toString(16)}`;
+}
+
+const BLOCKS_KEPT = 384;   // blockAt's answers kept per layout
+const CLIMB = 48;          // how far up blockAt looks for a block it already knows
+
+/**
+ * The block under level-l grid cell (X, Y): its run [lo, hi) of volumes, or
+ * null past the room. Recent answers are kept, so a cell whose parent (or a
+ * near ancestor) was asked for is a step or two down from it: walking down
+ * from the top every time costs a long multiply per level, which at the bottom
+ * of a room 100,000 levels deep is seconds a call.
+ */
 export function blockAt(layout, l, X, Y) {
   if (X < 0n || Y < 0n || X >= layout.W[l] || Y >= layout.H[l]) return null;
-  const cx = new Array(l), cy = new Array(l);
+  if (l === 0) return { lo: 0n, hi: layout.total };
+  const memo = layout.blocks;
+  const hit = memo.get(`${l}|${coordKey(X)}|${coordKey(Y)}`);
+  if (hit) return hit;
+  // Look a little way up for an ancestor already known.
+  const chain = [];
+  let a = l, ax = X, ay = Y, from = null;
+  while (a > 0 && chain.length < CLIMB) {
+    chain.push([ax, ay]);
+    const lv = layout.levels[a - 1];
+    ax /= lv.colsB; ay /= lv.rowsB; a--;
+    from = a === 0 ? { lo: 0n, hi: layout.total } : memo.get(`${a}|${coordKey(ax)}|${coordKey(ay)}`);
+    if (from) break;
+  }
+  if (!from) return blockFromTop(layout, l, X, Y);
+  let { lo, hi } = from;
+  for (let k = chain.length - 1; k >= 0; k--) {
+    const [cx, cy] = chain[k];
+    const lv = layout.levels[a];
+    const idx = Number(cy % lv.rowsB) * lv.cols + Number(cx % lv.colsB);
+    const child = lv.child;
+    const start = lo + BigInt(idx) * child;
+    if (start >= hi) return null;
+    lo = start;
+    hi = start + child < hi ? start + child : hi;
+    a++;
+    keepBlock(memo, `${a}|${coordKey(cx)}|${coordKey(cy)}`, { lo, hi });
+  }
+  return { lo, hi };
+}
+
+function keepBlock(memo, key, block) {
+  if (memo.size >= BLOCKS_KEPT) memo.delete(memo.keys().next().value);
+  memo.set(key, block);
+}
+
+// No ancestor known: the cell's index at every level, bottom up, then the walk
+// down — keeping the last few blocks, which the next cell over will ask for.
+function blockFromTop(layout, l, X, Y) {
+  const cx = new Array(l), cy = new Array(l), at = new Map();
   for (let i = l - 1; i >= 0; i--) {
     const lv = layout.levels[i];
+    if (l - i <= 4) at.set(i + 1, [X, Y]);
     cx[i] = Number(X % lv.colsB); cy[i] = Number(Y % lv.rowsB);
     X /= lv.colsB; Y /= lv.rowsB;
   }
   let lo = 0n, hi = layout.total;
   for (let i = 0; i < l; i++) {
     const lv = layout.levels[i];
-    const start = lo + BigInt(cy[i] * lv.cols + cx[i]) * lv.child;
+    const child = lv.child;
+    const start = lo + BigInt(cy[i] * lv.cols + cx[i]) * child;
     if (start >= hi) return null;
     lo = start;
-    hi = start + lv.child < hi ? start + lv.child : hi;
+    hi = start + child < hi ? start + child : hi;
+    const c = at.get(i + 1);
+    if (c) keepBlock(layout.blocks, `${i + 1}|${coordKey(c[0])}|${coordKey(c[1])}`, { lo, hi });
   }
   return { lo, hi };
 }
@@ -264,8 +416,20 @@ export function cellOfVolume(layout, volume, l = layout.D) {
 /** The machines a level-l cell is coloured by, in the order the map draws them. */
 export function samplesOf(layout, l, X, Y, block, count) {
   if (block.hi - block.lo === 1n) return [block.lo];
-  const below = seededBelow(`${layout.id}|${l}|${X}|${Y}`);
+  const below = seededBelow(`${layout.id}|${l}|${coordKey(X)}|${coordKey(Y)}`);
   return Array.from({ length: count }, () => block.lo + below(block.hi - block.lo));
+}
+
+/** r's digits in base b, low first, into out[lo … hi): halves split by b^half, short runs peeled. */
+function baseDigits(out, r, b, lo, hi) {
+  if (hi - lo <= 32) {
+    for (let i = lo; i < hi; i++) { out[i] = Number(r % b); r /= b; }
+    return;
+  }
+  const mid = (lo + hi) >> 1;
+  const P = b ** BigInt(mid - lo);
+  baseDigits(out, r % P, b, lo, mid);
+  baseDigits(out, r / P, b, mid, hi);
 }
 
 /**
@@ -279,19 +443,32 @@ export function mapClassifier(wing, params) {
   const indexOf = k => { const i = keys.indexOf(k); return i < 0 ? UNKNOWN : i; };
   const shape = roomShape(wing, params);
   const [n, k] = params;
-  if (wing.type === 'DFA' && n >= 2 && n <= 36) {
+  if (wing.type === 'DFA' && n >= 2) {
     const cls = flatLanguageClass(n, k);
     const ix = { e: indexOf('e'), u: indexOf('u'), f: indexOf('f'), c: indexOf('f'), o: indexOf('o') };
     const N = BigInt(n), mask = (1n << N) - 1n, m = n * k;
-    const delta = new Uint8Array(m), acc = new Uint8Array(n);
+    const delta = n <= 255 ? new Uint8Array(m) : new Int32Array(m), acc = new Uint8Array(n);
+    // δ's digits in base n: through toString where a base that big exists
+    // (36), else split in halves like the shape engine — the generic path
+    // built the whole document per sample, a second a tile in a 100-state room.
+    const readDelta = n <= 36
+      ? r => {
+        const s = r.toString(n);
+        for (let i = 0; i < m; i++) {
+          const c = i < s.length ? s.charCodeAt(s.length - 1 - i) : 48;
+          delta[i] = c <= 57 ? c - 48 : c - 87;
+        }
+      }
+      : r => baseDigits(delta, r, N, 0, m);
+    // A tile's volumes are a run of consecutive numbers, and at the bottom of
+    // the room they differ only in F, the low digits: δ is decoded once for
+    // them all, not once each (512 decodes a tile in a 100-state room).
+    let lastHigh = null;
     return v => {
       const bits = (v & mask).toString(2);
       for (let q = 0; q < n; q++) acc[q] = q < bits.length && bits.charCodeAt(bits.length - 1 - q) === 49 ? 1 : 0;
-      const s = (v >> N).toString(n);
-      for (let i = 0; i < m; i++) {
-        const c = i < s.length ? s.charCodeAt(s.length - 1 - i) : 48;
-        delta[i] = c <= 57 ? c - 48 : c - 87;
-      }
+      const high = v >> N;
+      if (high !== lastHigh) { readDelta(high); lastHigh = high; }
       return ix[cls(delta, acc)];
     };
   }
@@ -311,7 +488,7 @@ export function readTile(layout, a, TX, TY, classify, samples) {
   const spp = a === layout.D - 1 ? 1 : samples;
   const cells = new Uint8Array(n * spp).fill(VOID);
   const parent = blockAt(layout, a, TX, TY);
-  if (!parent) return { cells, spp };
+  if (!parent) return { cells, spp, lo: null, hi: null };
   const got = new Array(spp);
   for (let i = 0; i < n; i++) {
     const lo = parent.lo + BigInt(i) * lv.child;
@@ -323,7 +500,39 @@ export function readTile(layout, a, TX, TY, classify, samples) {
     if (spp > 1) got.sort((x, y) => x - y);
     for (let s = 0; s < spp; s++) cells[i * spp + s] = got[s];
   }
-  return { cells, spp };
+  // The block's run comes back with its cells: the page finds a cell's volumes
+  // from it, rather than walking down from the top of a deep room itself.
+  return { cells, spp, lo: parent.lo, hi: parent.hi };
+}
+
+// ── An endless room's shelf ────────────────────────────────────────
+
+/**
+ * The volumes an endless room's size is coloured by on its shelf: `count`
+ * drawn from that size, seeded by the room and the size, as room numbers. The
+ * shelf is the endless room's top level — one cell a size — and the page shows
+ * the same volumes in its reading pane as the worker classified.
+ */
+export function stripSamples(wing, params, s, count) {
+  const shape = roomShape(wing, params);
+  const c = shape.count(s);
+  if (!(c > 0n)) return [];
+  const base = volumesBefore(shape, s);
+  if (c === 1n) return [base];
+  const below = seededBelow(`${roomId(wing, params)}|size|${s}`);
+  return Array.from({ length: count }, () => base + below(c));
+}
+
+/** The shelf's sizes from … from + n − 1, read `samples` machines each (sorted, as a tile's cells are). */
+export function readStrip(wing, params, from, n, classify, samples) {
+  const cells = new Uint8Array(n * samples).fill(VOID);
+  for (let i = 0; i < n; i++) {
+    const vols = stripSamples(wing, params, from + i, samples);
+    if (!vols.length) continue;
+    const got = vols.map(v => classify(v)).sort((x, y) => x - y);
+    for (let k = 0; k < samples; k++) cells[i * samples + k] = got[Math.min(k, got.length - 1)];
+  }
+  return { cells, spp: samples };
 }
 
 /** The most common class among a cell's samples; ties go to the class listed first. */
@@ -367,9 +576,9 @@ function fitScale(layout, view) {
  * and snapped back.
  */
 function minScaleAt(layout, view, L) {
-  let s = fitScale(layout, view);
-  for (let i = 1; i < L && s > 0; i++) s /= layout.levels[i].cols;
-  return s;
+  // fitScale over the columns of levels 1 … L−1, by their logs: a loop over
+  // them ran on every step of normalize, quadratic in a deep room's depth.
+  return fitScale(layout, view) * 10 ** (layout.lW[1] - layout.lW[L]);
 }
 
 function maxScale(layout) {
@@ -394,6 +603,7 @@ export function fitCamera(cam, layout, view) {
 
 export function normalize(cam, layout, view) {
   const { levels, D } = layout;
+  leap(cam, layout, view);
   for (let guard = 0; guard < 4 * D + 16; guard++) {
     const ix = Math.floor(cam.ox), iy = Math.floor(cam.oy);
     if (ix) { cam.AX += BigInt(ix); cam.ox -= ix; }
@@ -421,6 +631,54 @@ export function normalize(cam, layout, view) {
   if (cam.AY < 0n) { cam.AY = 0n; cam.oy = 0; }
   if (cam.AX >= W) { cam.AX = W - 1n; cam.ox = 0.999999; }
   if (cam.AY >= H) { cam.AY = H - 1n; cam.oy = 0.999999; }
+}
+
+const LEAP_FROM = 24;           // levels: closer than this, normalize walks
+const SCALE = 2n ** 53n;
+
+/**
+ * A move across many levels at once — the rail dragged from top to bottom, a
+ * long fly — in one step. normalize walks a level at a time, multiplying or
+ * dividing the camera's cell by a level's grid each step, which in a room
+ * 90,000 levels deep is 90,000 operations on numbers as long as its volumes
+ * (nine seconds back to the top). The walk's arithmetic on the scale is done
+ * in floats to find where it ends, the cell is moved there by the product of
+ * the grids between, and normalize finishes the last few levels as before.
+ */
+function leap(cam, layout, view) {
+  const { levels, D } = layout;
+  // Where the walk ends, and the scale it carries at each level on the way.
+  let L = cam.L, s = cam.s;
+  const path = [];
+  for (let guard = 0; guard < 4 * D + 16; guard++) {
+    s = Math.max(s, minScaleAt(layout, view, L));
+    if (L === D) s = Math.min(s, maxScale(layout));
+    if (L < D && minDim(layout, L + 1, s / levels[L].cols) >= MAP_FLOOR) { s /= levels[L].cols; L++; }
+    else if (L > 1 && minDim(layout, L, s) < MAP_FLOOR) { s *= levels[L - 1].cols; L--; }
+    else break;
+    path.push(s);
+  }
+  if (path.length <= LEAP_FROM) return;
+  // Land a few levels short of the end, and let the walk do the rest exactly.
+  const steps = path.length - 8;
+  const target = cam.L + (L > cam.L ? steps : -steps);
+  const s2 = path[steps - 1];
+  if (target > cam.L) {
+    const Wr = radixProduct(layout.colsRow, cam.L, target), Hr = radixProduct(layout.rowsRow, cam.L, target);
+    const fx = BigInt(Math.floor(cam.ox * 2 ** 53)) * Wr, fy = BigInt(Math.floor(cam.oy * 2 ** 53)) * Hr;
+    cam.AX = cam.AX * Wr + fx / SCALE; cam.ox = Number(fx % SCALE) / 2 ** 53;
+    cam.AY = cam.AY * Hr + fy / SCALE; cam.oy = Number(fy % SCALE) / 2 ** 53;
+  } else {
+    const Wr = radixProduct(layout.colsRow, target, cam.L), Hr = radixProduct(layout.rowsRow, target, cam.L);
+    const up = (A, o, R) => {
+      const P = floorDiv(A, R);
+      return [P, Number(((A - P * R) * SCALE) / R) / 2 ** 53 + o / Number(R)];
+    };
+    [cam.AX, cam.ox] = up(cam.AX, cam.ox, Wr);
+    [cam.AY, cam.oy] = up(cam.AY, cam.oy, Hr);
+  }
+  cam.L = target;
+  cam.s = s2;
 }
 
 /** Zoom by `factor` about a point of the view, which stays where it is. */
@@ -502,7 +760,7 @@ export function visibleTiles(cam, layout, view) {
   const out = [];
   for (let TY = Y0 / lv.rowsB; TY <= Y1 / lv.rowsB; TY++) {
     for (let TX = X0 / lv.colsB; TX <= X1 / lv.colsB; TX++) {
-      out.push({ a, TX, TY, key: `${a}|${TX}|${TY}`, x: sc.x(TX * lv.colsB), y: sc.y(TY * lv.rowsB), w: lv.cols * sc.cw, h: lv.rows * sc.ch });
+      out.push({ a, TX, TY, key: `${a}|${coordKey(TX)}|${coordKey(TY)}`, x: sc.x(TX * lv.colsB), y: sc.y(TY * lv.rowsB), w: lv.cols * sc.cw, h: lv.rows * sc.ch });
     }
   }
   return out;

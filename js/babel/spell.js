@@ -15,7 +15,7 @@
 // the shape it is.
 
 import { roomShape, rankInSize } from './volumes.js';
-import { volumeOf } from './shape.js';
+import { prefixProducts, volumeOf } from './shape.js';
 
 const PART_NAMES = { bits: 'set', fin: 'choice', option: 'choice', fraction: 'fraction', nat: 'number', seq: 'string', subset: 'set', table: 'table', tuple: 'part', oneOf: 'choice' };
 
@@ -59,21 +59,50 @@ export function finiteTiles(wing, params, body) {
   const { parts, offset } = topParts(shape, body);
   const tiles = [];
   tiles.offset = offset;
-  let place = 1n;
   const label = (path, value) => (wing.tile ? wing.tile(path, value, params) : null) || { key: PART_NAMES[shapeAt(shape, path)?.part] || 'part', value: JSON.stringify(value) };
   for (const { shape: p, value, index } of parts) {
     if (p.part === 'table') {
       const B = p.of.total;
-      value.forEach((v, j) => {
-        tiles.push({ path: [index, j], ...label([index, j], v), digit: p.of.rank(v).r, radix: B, place });
-        place *= B;
-      });
+      value.forEach((v, j) => tiles.push({ path: [index, j], ...label([index, j], v), digit: p.of.rank(v).r, radix: B }));
     } else {
-      tiles.push({ path: [index], ...label([index], value), digit: p.rank(value).r, radix: p.total, place });
-      place *= p.total;
+      tiles.push({ path: [index], ...label([index], value), digit: p.rank(value).r, radix: p.total });
     }
   }
+  // A tile's place is the product of the radices below it, worked out when
+  // read: held for every tile of a 300-state DFA room (90,000 of them, each as
+  // long as the number) they ran a volume's page out of memory.
+  const placeOf = prefixProducts(tiles.map(t => t.radix));
+  tiles.forEach((t, i) => Object.defineProperty(t, 'place', { get: () => placeOf(i), enumerable: true }));
   return tiles;
+}
+
+/**
+ * Which digits each tile of a finite room spans, for the deep map's level
+ * names: [{ key, start, end }] over the room's radices with the one-value
+ * digits left out (as the layout leaves them out), in digit order. The same
+ * tiles finiteTiles spells, without their place values — a room's places are
+ * as long as its number, one per tile, which a 300-state DFA room cannot hold.
+ * Null where the digits and the tiles do not line up (a choice at the top).
+ */
+export function tileSpans(wing, params, body) {
+  const shape = roomShape(wing, params);
+  if (!shape.finite || shape.part === 'oneOf') return null;
+  const { parts } = topParts(shape, body);
+  const label = (path, value) => (wing.tile ? wing.tile(path, value, params) : null) || { key: PART_NAMES[shapeAt(shape, path)?.part] || 'part' };
+  const width = p => (p.radices ? p.radices() : [p.total]).filter(r => r > 1n).length;
+  const spans = [];
+  let at = 0;
+  const add = (path, value, n) => {
+    if (n) spans.push({ key: label(path, value).key, start: at, end: at + n });
+    at += n;
+  };
+  for (const { shape: p, value, index } of parts) {
+    if (p.part === 'table') {
+      const n = width(p.of);
+      value.forEach((v, j) => add([index, j], v, n));
+    } else add([index], value, width(p));
+  }
+  return spans;
 }
 
 function shapeAt(shape, path) {

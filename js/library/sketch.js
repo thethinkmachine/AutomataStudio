@@ -206,8 +206,11 @@ export function drawSketch(sk, { w = 320, h = 200, names = false, labels = false
       const [x1, y1] = p(-spread), [x2, y2] = p(spread), [c1x, c1y] = c(-spread * 1.5), [c2x, c2y] = c(spread * 1.5);
       d = `M${r1(x1)} ${r1(y1)}C${r1(c1x)} ${r1(c1y)} ${r1(c2x)} ${r1(c2y)} ${r1(x2)} ${r1(y2)}`;
       arrow = arrowHead(x2, y2, x2 - c2x, y2 - c2y, head);
-      lx = a.px + Math.cos(ang) * (ra + reach * 0.82 + 7);
-      ly = a.py + Math.sin(ang) * (ra + reach * 0.82 + 7);
+      // The loop's apex is ra + 0.46·reach out (the curve's midpoint, from its
+      // control points); the label sits just past it. At 0.82·reach it floated
+      // a whole radius above the loop it belonged to.
+      lx = a.px + Math.cos(ang) * (ra + reach * 0.46 + 10);
+      ly = a.py + Math.sin(ang) * (ra + reach * 0.46 + 10);
       // A loop's lines grow away from its state, so the last is not drawn over it.
       grow = Math.sin(ang) < -0.5 ? -1 : Math.sin(ang) > 0.5 ? 1 : 0;
       away = [Math.cos(ang), Math.sin(ang)];
@@ -374,11 +377,17 @@ export function framesFromStandard(code, max = 90) {
 /** A run's frames as a space-time picture: time runs down, one row per step. */
 export function drawRun(frames, { w = 320, h = 200 } = {}) {
   if (!frames?.length) return null;
+  // Height never shrinks a cell below 3px — the rows past the figure are cut
+  // instead — and the width is fitted to the rows drawn. Shrunk to fit every
+  // frame, a head running across a blank tape drew 2px cells, too small for its
+  // outline: a machine that never writes drew nothing at all.
+  const fit = Math.max(3, Math.min(14, Math.floor((h - 16) / frames.length)));
+  const shown = frames.slice(0, Math.floor((h - 16) / fit));
   let lo = 0, hi = 0;
-  for (const f of frames) { lo = Math.min(lo, f.head); hi = Math.max(hi, f.head); }
+  for (const f of shown) { lo = Math.min(lo, f.head); hi = Math.max(hi, f.head); }
   const span = hi - lo + 1;
-  const s = Math.max(2, Math.min(14, Math.floor((h - 16) / frames.length), Math.floor((w - 16) / (span + 4))));
-  const cols = Math.floor((w - 16) / s), rows = Math.min(frames.length, Math.floor((h - 16) / s));
+  const s = Math.max(2, Math.min(fit, Math.floor((w - 16) / (span + 4))));
+  const cols = Math.floor((w - 16) / s), rows = Math.min(shown.length, Math.floor((h - 16) / s));
   const left = Math.round((lo + hi) / 2) - Math.floor(cols / 2);
   const top = Math.round((h - rows * s) / 2), ox = Math.round((w - cols * s) / 2);
   const out = [`<svg class="sk sk-run" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="The first steps from a blank tape, time running down">`];
@@ -394,7 +403,10 @@ export function drawRun(frames, { w = 320, h = 200 } = {}) {
       x += n;
     }
     const hx = f.head - left;
-    if (hx >= 0 && hx < cols && s >= 3) out.push(`<rect class="rn-h" x="${ox + hx * s + 0.5}" y="${top + y * s + 0.5}" width="${s - 1}" height="${s - 1}"/>`);
+    if (hx < 0 || hx >= cols) continue;
+    // Too small to outline, the head is a filled cell in the head's colour.
+    if (s >= 3) out.push(`<rect class="rn-h" x="${ox + hx * s + 0.5}" y="${top + y * s + 0.5}" width="${s - 1}" height="${s - 1}"/>`);
+    else out.push(`<rect class="rn-hd" x="${ox + hx * s}" y="${top + y * s}" width="${s}" height="${s}"/>`);
   }
   out.push('</svg>');
   return out.join('');
