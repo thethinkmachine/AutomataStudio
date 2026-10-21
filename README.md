@@ -321,11 +321,15 @@ desktop updater reports an error, the code is explained in
 
 ## Contributing
 
-Pull requests are welcome. Commits must be signed off (`git commit -s`).
-[CONTRIBUTING.md](CONTRIBUTING.md) explains why the licence requires it. To contribute
-machines, submit them to the
+The source code is private, so code contributions are by arrangement: open an issue
+first. Anyone can report bugs and request features on the
+[issue tracker](https://github.com/thethinkmachine/AutomataStudio-releases/issues), and
+contribute machines to the
 [machine library](https://github.com/thethinkmachine/automata-library), either from
 the app's Library view or through the library's issue form.
+
+Code contributions must be signed off (`git commit -s`).
+[CONTRIBUTING.md](CONTRIBUTING.md) explains why the licence requires it.
 
 ## Citation
 
