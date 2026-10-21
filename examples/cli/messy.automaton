@@ -1,0 +1,101 @@
+{
+  "format": "automata-studio/workspace",
+  "schema": 1,
+  "app": "2.9.0",
+  "config": {},
+  "machine": "DFA",
+  "sigma": [
+    "0",
+    "1"
+  ],
+  "states": [
+    {
+      "id": "s1",
+      "x": 120,
+      "y": 200,
+      "name": "even"
+    },
+    {
+      "id": "s2",
+      "x": 320,
+      "y": 200,
+      "name": "odd"
+    },
+    {
+      "id": "s3",
+      "x": 520,
+      "y": 200,
+      "name": "trap"
+    },
+    {
+      "id": "s4",
+      "x": 320,
+      "y": 360,
+      "name": "spare"
+    }
+  ],
+  "startId": "s1",
+  "accepts": [
+    "s1"
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "1"
+    },
+    {
+      "id": "t2",
+      "from": "s1",
+      "to": "s1",
+      "symbol": "0"
+    },
+    {
+      "id": "t3",
+      "from": "s2",
+      "to": "s1",
+      "symbol": "1"
+    },
+    {
+      "id": "t4",
+      "from": "s2",
+      "to": "s2",
+      "symbol": "0"
+    },
+    {
+      "id": "t5",
+      "from": "s2",
+      "to": "s3",
+      "symbol": "2"
+    },
+    {
+      "id": "t6",
+      "from": "s3",
+      "to": "s3",
+      "symbol": "0"
+    },
+    {
+      "id": "t7",
+      "from": "s3",
+      "to": "s3",
+      "symbol": "1"
+    },
+    {
+      "id": "t8",
+      "from": "s4",
+      "to": "s1",
+      "symbol": "0"
+    },
+    {
+      "id": "t9",
+      "from": "s1",
+      "to": "s2",
+      "symbol": "1"
+    }
+  ],
+  "meta": {
+    "title": "Even number of 1s (with mistakes)",
+    "blurb": "An even-parity DFA with things for lint to find: a state the start cannot reach, a symbol outside Σ, and the same edge twice — which also makes it branch. The trap state is a sink, which is how a DFA is completed, so lint leaves it alone."
+  }
+}
