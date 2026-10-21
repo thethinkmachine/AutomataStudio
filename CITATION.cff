@@ -14,7 +14,7 @@ authors:
     orcid: "https://orcid.org/0009-0002-8206-4077"
 version: 3.6.1
 license: PolyForm-Noncommercial-1.0.0
-repository-code: "https://github.com/thethinkmachine/AutomataStudio-releases"
+repository-code: "https://github.com/thethinkmachine/AutomataStudio"
 url: "https://automatastudio.pages.dev/"
 keywords:
   - automata theory

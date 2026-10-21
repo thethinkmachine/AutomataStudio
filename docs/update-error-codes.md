@@ -21,8 +21,8 @@ is always up to date, and the macOS and `.deb` builds are updated by hand.
 | `UPD-03` | The update server refused the request — commonly rate limiting after many checks in a short time. | Wait a few minutes and try again. |
 | `UPD-04` | The update server reported a problem on its side. | Nothing to fix locally; try again later. |
 | `UPD-05` | An update downloaded, but its contents did not match what the server said they should be, so it was discarded rather than installed. | Try again. If it keeps happening, report it — see below. |
-| `UPD-06` | This copy of the app has no update channel, so it cannot update itself. Expected for the macOS and `.deb` builds, and when running from source. | [Download the latest version](https://github.com/thethinkmachine/AutomataStudio-releases/releases/latest) manually. |
-| `UPD-07` | An update was downloaded, but its installer could not be started — usually because the downloaded file has since been removed (by a disk cleaner or antivirus, say) or was blocked from running. | Pick **Check for Updates** to download it again, or [download the latest version](https://github.com/thethinkmachine/AutomataStudio-releases/releases/latest) and run its installer. |
+| `UPD-06` | This copy of the app has no update channel, so it cannot update itself. Expected for the macOS and `.deb` builds, and when running from source. | [Download the latest version](https://github.com/thethinkmachine/AutomataStudio/releases/latest) manually. |
+| `UPD-07` | An update was downloaded, but its installer could not be started — usually because the downloaded file has since been removed (by a disk cleaner or antivirus, say) or was blocked from running. | Pick **Check for Updates** to download it again, or [download the latest version](https://github.com/thethinkmachine/AutomataStudio/releases/latest) and run its installer. |
 | `UPD-99` | Something failed that does not match any case above. | Report it — see below. |
 
 `UPD-05` is a safety feature, not a bug in itself: the app refuses to install
@@ -31,7 +31,7 @@ anything it cannot verify. The usual cause is a download interrupted partway.
 ## Reporting a failure
 
 Open an issue at
-[github.com/thethinkmachine/AutomataStudio-releases/issues](https://github.com/thethinkmachine/AutomataStudio-releases/issues)
+[github.com/thethinkmachine/AutomataStudio/issues](https://github.com/thethinkmachine/AutomataStudio/issues)
 with the code, your operating system, and the app version from **⋯ → About**.
 
 The full technical error is written to the console, not to the dialog — it contains

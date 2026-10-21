@@ -117,10 +117,10 @@ submitting it later knows whether it is an update or a remix.
 
 | Link | Does |
 | --- | --- |
-| `…/AutomataStudio/#lib=<id>` | opens the entry's machine on the canvas |
-| `…/AutomataStudio/#library=<id>` | shows the entry's page |
-| `…/AutomataStudio/#collection=<id>` | shows a collection |
-| `…/AutomataStudio/#library` | opens the library |
+| `automatastudio.pages.dev/#lib=<id>` | opens the entry's machine on the canvas |
+| `automatastudio.pages.dev/#library=<id>` | shows the entry's page |
+| `automatastudio.pages.dev/#collection=<id>` | shows a collection |
+| `automatastudio.pages.dev/#library` | opens the library |
 | `automata-studio://…` | the same, in the desktop app |
 
 **More → Copy link** on an entry copies the second kind, and **Copy link** on a collection the third.

@@ -8,11 +8,11 @@ Draw a machine, run it step by step, derive its language, put it through the tex
 constructions, and take it out as a diagram, LaTeX or working code. It covers 30
 machine types, from DFAs to multi-tape Turing machines and ω-automata.
 
-[![Version](https://img.shields.io/github/v/release/thethinkmachine/AutomataStudio-releases?label=version)](https://github.com/thethinkmachine/AutomataStudio-releases/releases)
+[![Version](https://img.shields.io/github/v/release/thethinkmachine/AutomataStudio?label=version)](https://github.com/thethinkmachine/AutomataStudio/releases)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 
 [**Open in the browser**](https://automatastudio.pages.dev/) ·
-[Download the desktop app](https://github.com/thethinkmachine/AutomataStudio-releases/releases/latest) ·
+[Download the desktop app](https://github.com/thethinkmachine/AutomataStudio/releases/latest) ·
 [Machine library](https://thethinkmachine.github.io/automata-library/) ·
 [Guides](#guides) ·
 [Cite](#citation)
@@ -48,7 +48,7 @@ You can use AutomataStudio in three ways.
 | | How | Notes |
 | --- | --- | --- |
 | **Web** | [automatastudio.pages.dev](https://automatastudio.pages.dev/) | Nothing to install, and your machines stay in your browser. |
-| **Desktop** | [Latest release](https://github.com/thethinkmachine/AutomataStudio-releases/releases/latest) for Windows, macOS and Linux | Windows and Linux AppImage builds update themselves. The `automata` CLI ships inside. |
+| **Desktop** | [Latest release](https://github.com/thethinkmachine/AutomataStudio/releases/latest) for Windows, macOS and Linux | Windows and Linux AppImage builds update themselves. The `automata` CLI ships inside. |
 | **From source** | Not available | The source code is not public. |
 
 ### Your first machine
@@ -315,7 +315,7 @@ notification store, the renderer, and how to add a machine type (one row in
   stack is imported as final-state acceptance and flagged.
 
 Bug reports and feature requests go to the
-[issue tracker](https://github.com/thethinkmachine/AutomataStudio-releases/issues). If the
+[issue tracker](https://github.com/thethinkmachine/AutomataStudio/issues). If the
 desktop updater reports an error, the code is explained in
 [docs/update-error-codes.md](docs/update-error-codes.md).
 
@@ -323,7 +323,7 @@ desktop updater reports an error, the code is explained in
 
 The source code is private, so code contributions are by arrangement: open an issue
 first. Anyone can report bugs and request features on the
-[issue tracker](https://github.com/thethinkmachine/AutomataStudio-releases/issues), and
+[issue tracker](https://github.com/thethinkmachine/AutomataStudio/issues), and
 contribute machines to the
 [machine library](https://github.com/thethinkmachine/automata-library), either from
 the app's Library view or through the library's issue form.
@@ -343,14 +343,14 @@ please cite it. GitHub's **"Cite this repository"** button (from
   title   = {{AutomataStudio}: An {IDE} for Designing, Simulating and Analysing Automata},
   year    = {2026},
   version = {3.6.1},
-  url     = {https://github.com/thethinkmachine/AutomataStudio-releases},
+  url     = {https://github.com/thethinkmachine/AutomataStudio},
   note    = {Software}
 }
 ```
 
 > Chaubey, S. (2026). *AutomataStudio: An IDE for designing, simulating and analysing
 > automata* (Version 3.6.1) [Computer software].
-> https://github.com/thethinkmachine/AutomataStudio-releases
+> https://github.com/thethinkmachine/AutomataStudio
 
 Cite the version you actually used, so that others can reproduce your results. If you
 have a paper, course or project that uses AutomataStudio, please open an issue to let
