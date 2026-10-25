@@ -86,6 +86,7 @@ screenshots:
 | [The reference](docs/reference.md) | the machine pages, decidability and language classes |
 | [Building blocks](docs/building-blocks.md) | sub-machines, nesting and reuse, worked through on a small CPU |
 | [The command line](docs/cli.md) | `automata` by task, with the full [command reference](docs/cli-reference.md) |
+| [Privacy](docs/privacy.md) | what the website measures, what it never sends, and how to turn it off |
 
 ## Features
 
