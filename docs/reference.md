@@ -29,7 +29,8 @@ order:
 5. **What it can and cannot express**, with the languages that separate it from its
    neighbours.
 6. Topics particular to the model, such as minimality and the Myhill–Nerode theorem on
-   the DFA page, or why nondeterminism adds power to a pushdown automaton.
+   the DFA page, why nondeterminism adds power to a pushdown automaton, or why two
+   registers are enough for a Minsky machine to simulate a Turing machine.
 7. **In this editor**: how the app draws and runs it.
 
 The formal definition on each page is the same tuple the inspector prints for the

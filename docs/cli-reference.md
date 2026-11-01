@@ -29,7 +29,8 @@ automata run <machine> [word ...]
 
 Decide each word. With no words, reads one word per line from standard input.
 The empty word is "" or ε. An ω-automaton reads u(v). A transducer prints its
-output after the verdict.
+output after the verdict, and a Minsky machine its output registers; its input
+is the input registers' starting values, "3,4" or "y=4,x=3".
 
   --json            one object per word
   --max-steps N     step budget per word (default 100000)
@@ -63,7 +64,9 @@ Batch-test words from a file; "w => accept" lines are expectations. --watch reru
 automata test <machine> <words-file | ->
 
 One word per line; "w => accept" or "w => reject" (also acc/rej, a/r, ✓/✗) makes
-the line an expectation. Blank lines and lines starting with # are skipped.
+the line an expectation. A Minsky machine's line may expect its output
+registers too: "3, 4 => 7", or "3, 4 => accept 7". Blank lines and lines
+starting with # are skipped.
 
   --watch           rerun whenever the machine or the words file changes
   --failures        show only the lines that did not pass
@@ -857,7 +860,9 @@ Grade submissions against an exercise; CSV or Gradescope results.json.
 automata grade <exercise> <submission | dir ...>
 
 Grades each submission the way the app's exercise panel does: exactly for
-finite automata, word by word up to the exercise's length bound otherwise.
+finite automata, word by word up to the exercise's length bound otherwise,
+and a Minsky machine on every input with values up to that bound — the
+verdict, and the output registers where both accept.
 The exercise is an .automaton file with an exercise in it (the app's
 Create Exercise writes one), or any machine, which is then the reference.
 
@@ -867,6 +872,7 @@ Create Exercise writes one), or any machine, which is then the reference.
   --allow DFA,NFA       for a bare reference: the machine types accepted
   --max-states N        for a bare reference: the most states allowed
   --max-length N        for a bare reference: the bound for non-exact grading
+                        (the largest input value, for a Minsky machine)
   --json
 
 Exit: 0 every submission passed, 1 one did not.
@@ -1426,7 +1432,9 @@ reference sealed, the machine types allowed, a state limit and hints.
   $ automata grade week3/exercise-1.automaton submissions/ --csv grades.csv
 
 Grading is exact for finite automata (proved equal, or the shortest word they
-disagree on) and word by word up to the exercise's length bound otherwise.
+disagree on) and word by word up to the exercise's length bound otherwise. A
+Minsky machine is checked on every input with values up to that bound: the same
+verdict, and the same output registers wherever both accept.
 
 For Gradescope, in the autograder's run_autograder:
   automata grade /autograder/source/exercise.automaton \

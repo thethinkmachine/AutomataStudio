@@ -5,8 +5,9 @@
 **An IDE for designing, simulating and analysing automata and formal languages.**
 
 Draw a machine, run it step by step, derive its language, put it through the textbook
-constructions, and take it out as a diagram, LaTeX or working code. It covers 30
-machine types, from DFAs to multi-tape Turing machines and ω-automata.
+constructions, and take it out as a diagram, LaTeX or working code. It covers 31
+machine types, from DFAs to multi-tape Turing machines, Minsky register machines and
+ω-automata.
 
 [![Version](https://img.shields.io/github/v/release/thethinkmachine/AutomataStudio?label=version)](https://github.com/thethinkmachine/AutomataStudio/releases)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
@@ -86,6 +87,7 @@ screenshots:
 | [The reference](docs/reference.md) | the machine pages, decidability and language classes |
 | [Building blocks](docs/building-blocks.md) | sub-machines, nesting and reuse, worked through on a small CPU |
 | [The command line](docs/cli.md) | `automata` by task, with the full [command reference](docs/cli-reference.md) |
+| [The file format](docs/file-format.md) | writing a machine by hand, by script or with an AI assistant, for every machine type |
 | [Privacy](docs/privacy.md) | what the website measures, what it never sends, and how to turn it off |
 
 ## Features
@@ -177,10 +179,12 @@ More in [the grammar workbench guide](docs/grammar.md).
 - **Interchange:** Graphviz DOT, TikZ/LaTeX, CSV and Markdown transition tables, and
   workspace JSON.
 - **Code generation:** JavaScript, Python, Java, C, XState and SCXML, with Jest and
-  pytest suites.
+  pytest suites. A Minsky machine becomes a `run()` that returns its verdict and output
+  registers.
 - **Share links:** the whole workspace is compressed into a URL and never sent to a
   server.
 - **Exercises:** sealed reference solutions with exact or bounded grading, for teaching.
+  A Minsky machine is graded on its inputs: the same verdict, and the same outputs.
 
 ### StateMate (optional AI assistant)
 StateMate builds and edits machines from a prompt and answers questions about the one
@@ -343,14 +347,14 @@ please cite it. GitHub's **"Cite this repository"** button (from
   author  = {Chaubey, Shreyan},
   title   = {{AutomataStudio}: An {IDE} for Designing, Simulating and Analysing Automata},
   year    = {2026},
-  version = {3.7.2},
+  version = {3.7.3},
   url     = {https://github.com/thethinkmachine/AutomataStudio},
   note    = {Software}
 }
 ```
 
 > Chaubey, S. (2026). *AutomataStudio: An IDE for designing, simulating and analysing
-> automata* (Version 3.7.2) [Computer software].
+> automata* (Version 3.7.3) [Computer software].
 > https://github.com/thethinkmachine/AutomataStudio
 
 Cite the version you actually used, so that others can reproduce your results. If you

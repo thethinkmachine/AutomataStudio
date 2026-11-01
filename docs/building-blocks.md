@@ -15,11 +15,16 @@ computational power — placing one *inlines* its states into the machine, and t
 proof that blocks change nothing is that expansion. What they buy is legibility
 and reuse.
 
-Blocks are a **Turing-machine feature**: `TM`, `NDTM`, `MTM`, `LBA`, `ITM`. Control
-leaves a block along an edge that reads anything, puts it back and does not move
-(`Σ / Σ, S`), and only a machine with a *stay* move can do that without eating a
-symbol. On a DFA the same edge would change the language, so the option is not
-offered.
+Blocks are a feature of the **Turing machines** — `TM`, `NDTM`, `MTM`, `LBA`, `ITM` —
+and of the **Minsky register machine**. Control leaves a block along an edge that
+consumes nothing: on a Turing machine one that reads anything, puts it back and does
+not move (`Σ / Σ, S`), and on a register machine a plain jump (`ε`). Only a machine
+with such a move can leave a block without eating a symbol. On a DFA the exit edge
+would change the language, so the option is not offered.
+
+Register machines are programmed this way in textbooks: clear a register, copy one,
+add one to another, each a subroutine. The bundled *Multiply x · y* example is built
+from one such block.
 
 ## The three things to know before you start
 

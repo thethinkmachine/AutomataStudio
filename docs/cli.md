@@ -364,7 +364,7 @@ automata codegen dfa.automaton --lang c --style switch -o dfa.c
 | `code-js` … `code-scxml` | – | ✔ | recognisers in JavaScript, Python, Java, C, XState, SCXML |
 | `test-jest`, `test-pytest` | – | ✔ | test suites derived from the language |
 
-**`export`** is the app's export dialog: `automata export --list` shows every format with its options, and `--opt key=value` sets them. **`codegen`** is its code half, with `--lang` and `--style` (table, switch or class). A target that cannot express the machine — C for an NFA, say — fails with the reason rather than writing a file.
+**`export`** is the app's export dialog: `automata export --list` shows every format with its options, and `--opt key=value` sets them. **`codegen`** is its code half, with `--lang` and `--style` (table, switch or class). A target that cannot express the machine — C for an NFA, say — fails with the reason rather than writing a file. A Minsky machine gets `run(inputs)` in every language and shape, returning the verdict and the output registers, and its test suites assert both.
 
 ---
 
