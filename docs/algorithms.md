@@ -5,7 +5,7 @@ interactive pages. Each one works on the machine on your canvas, shows its worki
 step by step, and can put its result back on the canvas as an ordinary machine you can
 edit, run or export.
 
-Open it with the **Algorithms** tab of the aux window, or <kbd>3</kbd> on the canvas.
+Open it with the **Algorithms** tab of the aux window, or <kbd>4</kbd> on the canvas.
 The chip at the top right names the machine it is reading. The search box at the top of
 the list filters it.
 

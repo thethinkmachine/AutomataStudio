@@ -51,7 +51,7 @@ carries:
 | `machine_opened` | a machine is opened | how (example, file, paste, link, machine code, library) and the format; the example's or library entry's public name |
 | `open_failed` | a machine could not be opened | how, and whether it was unreadable or invalid |
 | `wizard_finished` | the wizard builds a machine | create or edit |
-| `view_opened` | you open the Library, Algorithms, Grammar or Reference | which view |
+| `view_opened` | you open the Library, Babel, Algorithms, Grammar or Reference | which view |
 | `section_opened` | you open a panel section | which section |
 | `algorithm_opened`, `grammar_tool_opened` | you open an algorithm or a grammar tool | which one |
 | `run` | a run finishes | accepted, rejected or unknown, and whether a step limit stopped it |

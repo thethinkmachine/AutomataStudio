@@ -963,6 +963,9 @@ names it, and the JSON carries its standard notation.
                     reference's; 0 = off)
   --far D           finite automata reduction: DFAs up to D states (default 6;
                     7 is the reference's BB(5) search and takes minutes a machine)
+  --far-ops N       the most work that search may do on one machine (default 5e9,
+                    several times the reference's whole BB(5) search; inf = no
+                    limit). A large machine reaches it; a 5-state one does not
   --loops N         Coq-BB5's loop decider with gas N (default 4100; 0 = off)
   --no-ngram        skip Coq-BB5's n-gram CPS (its BB(5) pipeline's parameters)
   --repwl L,M[;…]   Coq-BB5's repeated word list with word length L and repeat

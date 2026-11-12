@@ -4,7 +4,7 @@ The Reference view is a built-in textbook: one page for every machine the app ca
 build, plus sections on decidability and language classes. It is part of the app, so
 it works offline, and it always matches what the editor does.
 
-Open it with the **Reference** tab of the aux window, or <kbd>5</kbd> on the canvas.
+Open it with the **Reference** tab of the aux window, or <kbd>6</kbd> on the canvas.
 It opens on the page for the machine type on your canvas.
 
 ![Reading the DFA and NBA pages, the decidability map and Rice's theorem](media/reference.webp)

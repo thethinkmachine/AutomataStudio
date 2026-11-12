@@ -4,7 +4,7 @@ The Grammar view is where you write a grammar once and then take it apart with 2
 tools: inspect it, normalise it, parse words with it, decide things about its
 language, and convert it to and from machines on the canvas.
 
-Open it with the **Grammar** tab of the aux window, or <kbd>4</kbd> on the canvas.
+Open it with the **Grammar** tab of the aux window, or <kbd>5</kbd> on the canvas.
 
 ![Typing a grammar, filling a CYK table step by step, and finding an ambiguity witness](media/grammar.webp)
 

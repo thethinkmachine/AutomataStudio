@@ -52,12 +52,34 @@ the library verified, by machine type and by tag. The search box takes plain wor
 | `badge:minimal` | entries with a badge: `tested`, `deterministic`, `minimal`, `halts`, `never-halts` |
 | `states:<10`, `states:>=3` | by size |
 | `accepts:0110`, `rejects:ab` | finite automata that accept (or reject) a word; the word is run on every candidate |
+| `accepts:{0110, 11}`, `rejects:{ab, ε}` | the same, for every word in the set: a set is the term repeated, and any filter takes one (`type:{DFA, NFA}`) |
 | `by:login` | one author |
 | `tag:parity` | one tag |
 | `level:intro` | `intro`, `intermediate` or `advanced` |
 
 `accepts:` and `rejects:` answer by running machines, so you can search by behaviour:
 `type:DFA accepts:0110 rejects:011` finds the DFAs that tell those two words apart.
+For more than a couple of words, write them as sets. Commas separate the words, and a
+space cannot split one. The empty word is `ε`, or `eps`, `λ` or `""` if ε is hard to
+type, as in the grammar workbench. `...` is not a word, so list every word you mean:
+
+```text
+accepts:{ab, aab, bab, abab} rejects:{a, b, aa, ba, bb, aba}
+```
+
+Beside them, a search made only of `accepts:` and `rejects:` words also offers
+**the smallest DFA that agrees with all of them**, from **Babel**, the tab beside the
+Library (<kbd>3</kbd>), which numbers every machine of nine kinds. It is the smallest there is: no
+DFA with fewer states gets every word right. Its page lists the shortest words it
+accepts, so you can see what your words left open and add one to settle it. The
+same words typed into Babel's own search box find the same machine.
+
+Put `type:NFA` in front to ask for **the smallest NFA** instead. An NFA can need far fewer
+states than any DFA for the same words. For the words whose third letter from the end is
+`a`, the smallest NFA has 4 states and the smallest DFA 8, and the NFA's page says what
+the DFA needs. The NFA has only the moves your words use. Words search these two kinds of
+machine only: a pushdown automaton, a Büchi automaton or a Turing machine cannot be found
+from a word list.
 
 **Pasting a machine code** (the one-line form from **Copy Machine Code**, or a Turing
 machine in standard notation like `1RB1LB_1LA1RZ`) finds that exact machine, whatever
